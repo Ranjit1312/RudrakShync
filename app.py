@@ -6,7 +6,7 @@ st.set_page_config(page_title="RudrakshYnc", layout="wide")
 
 tabs = {
     "About Me": auth.show_about,
-    "Assessment": assessment.show_assessment,
+    "Assessment": assessment.run_assessment_flow,
     "Profile + Practice": profile.show_profile,
     "Practice Log + Journaling": journal.show_journal,
     "Streak Tracker + Reports": streak.show_streak
