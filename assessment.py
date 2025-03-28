@@ -346,7 +346,7 @@ class NeuroAssessment:
             st.write(f"**{d}**: {self.domain_scores[d]:.2f} (Confidence: {conf_label})")
 
         # Optional: you can store or return these for later usage
-        st.success("Assessment complete! You can now move to recommended practices or logging.")
+        st.success("Assessment complete! You can now move to recommended practices or login.")
 
     #######################
     # Public method that runs the entire flow
@@ -420,8 +420,28 @@ def run_assessment_flow():
     st.write("**Final Scores**: ", final_scores)
     st.write("**Final Confidences**: ", final_conf)
 
+    # Save to Supabase
+    if st.button("Save Assessment"):
+        session_id = st.session_state.get("session_id")
+        user_email = st.session_state.get("user_email", None)
+        
+        entry = {
+            "user_email": user_email,
+            "session_id": session_id,
+            "timestamp": datetime.utcnow().isoformat(),
+            "scores": final_scores,
+            "confidence": final_conf,
+            "source": "assessment"
+        }
+      
+        try:
+            supabase.table("assessments").insert(entry).execute()
+            st.success("Assessment saved successfully.")
+        except Exception as e:
+            st.error(f"Error saving assessment: {e}")
+
     # You can return them for further usage:
-    return final_scores, final_conf
+    # return final_scores, final_conf
 
 
 # If you want to test in isolation: 
