@@ -1,1 +1,0 @@
-# Practice log and journaling
