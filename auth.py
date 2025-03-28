@@ -1,4 +1,13 @@
 import streamlit as st
+import uuid
+
+def ensure_session_id():
+    """
+    Generates a UUID-based session ID for anonymous users.
+    Called once per session.
+    """
+    if "session_id" not in st.session_state:
+        st.session_state["session_id"] = str(uuid.uuid4())
 
 def login_ui():
     st.subheader("Log In or Sign Up")
