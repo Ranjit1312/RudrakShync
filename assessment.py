@@ -1,140 +1,430 @@
+##########################
+# assessment.py
+##########################
 import streamlit as st
 
-def show_assessment():
-    st.title("Neuro-Factor Assessment")
-    st.write("Rate yourself on the following factors:")
-    factors = ["Stress", "Mood", "Focus", "Social", "GABA", "Anxiety", "Motivation"]
-    scores = {}
-    for factor in factors:
-        scores[factor] = st.slider(factor, 0, 10, 5)
-    if st.button("Submit"):
-        st.session_state["assessment_scores"] = scores
-        st.success("Assessment saved for session.")
+# If you need typed dictionaries:
+from typing import Dict, Any, Optional
 
-# assessment_core.py
+class NeuroAssessment:
+    """
+    Manages domain scoring for 7 neurobiological factors:
+    - Stress
+    - Mood
+    - Focus
+    - Social
+    - GABA
+    - Anxiety
+    - Motivation
 
-# import random
+    Scores are kept in self.domain_scores (0-10).
+    Confidence stored in self.domain_conf (0.0 to 1.0).
+    """
 
-# # List of domain keys
-# DOMAINS = ["stress", "mood", "focus", "social", "gaba", "anxiety", "motivation"]
+    def __init__(self):
+        # Initialize domain scores at a 'neutral' 5, domain confidence at 0.
+        self.domains = ["Stress", "Mood", "Focus", "Social", "GABA", "Anxiety", "Motivation"]
+        self.domain_scores: Dict[str, float] = {d: 5.0 for d in self.domains}
+        self.domain_conf: Dict[str, float] = {d: 0.0 for d in self.domains}
 
-# # Starting baseline for each domain
-# BASELINE_SCORE = 5.0
+        # Store relevant user inputs / micro-task results in a dictionary
+        self.user_data: Dict[str, Any] = {}
 
-# def initialize_scores():
-#     """Initialize domain scores and domain confidence (0.0 to 1.0)."""
-#     scores = {d: BASELINE_SCORE for d in DOMAINS}
-#     confidences = {d: 0.0 for d in DOMAINS}  # We'll accumulate evidence
-#     return scores, confidences
+    def _update_domain(
+        self,
+        domain: str,
+        delta_score: float,
+        delta_conf: float = 0.1,
+        confidence_slider: float = 1.0
+    ):
+        """
+        Update the domain score and confidence.
 
-# def apply_microtask_results(task_data, user_confidence, domain_scores, domain_conf):
-#     """
-#     task_data: dict with fields like:
-#       {
-#         'avg_reaction_time': float,
-#         'false_alarms': int,
-#         'misses': int,
-#         'task_type': 'color' or '2back'
-#       }
-#     user_confidence: 0 to 1 scale for the microtask result (though typically micro-task is objective,
-#                      you can store a 'trust' factor or let user say how well they performed).
-#     domain_scores: current domain scores
-#     domain_conf: current domain confidence
-#     """
-#     # For demonstration, let's define some threshold-based logic:
-#     avg_rt = task_data.get("avg_reaction_time", 500)
-#     fa = task_data.get("false_alarms", 0)
-#     ms = task_data.get("misses", 0)
-#     ttype = task_data.get("task_type", "color")
+        :param domain: Domain name, e.g. "Stress"
+        :param delta_score: How much to increment/decrement (can be negative).
+        :param delta_conf: How much to increment the domain confidence from this item.
+        :param confidence_slider: The user’s own self-rated confidence (0 to 1).
+        """
+        if domain not in self.domain_scores:
+            return
 
-#     # Example: color reaction or 2-back
-#     if ttype == "color":
-#         # if avg_rt < 400 => user is relatively quick => + to focus
-#         if avg_rt < 400:
-#             domain_scores["focus"] += 1.0 * user_confidence
-#             domain_conf["focus"] += 0.3
-#         elif avg_rt > 600:
-#             # might be stressed or sluggish
-#             domain_scores["focus"] -= 0.5 * user_confidence
-#             domain_conf["focus"] += 0.3
+        # Weighted by user’s confidence
+        effective_delta = delta_score * confidence_slider
+        self.domain_scores[domain] += effective_delta
 
-#         # false alarms => might indicate impulsivity => low GABA
-#         if fa > 2:
-#             domain_scores["gaba"] -= 1.0 * user_confidence
-#             domain_conf["gaba"] += 0.3
+        # Increase domain confidence (capped at 1.0)
+        self.domain_conf[domain] = min(1.0, self.domain_conf[domain] + delta_conf * confidence_slider)
 
-#         # misses => could be stress or focus problem
-#         if ms > 2:
-#             domain_scores["stress"] += 0.5 * user_confidence
-#             domain_conf["stress"] += 0.3
+    def record_microtask_a_results(
+        self,
+        reaction_time: float,
+        hits: int,
+        misses: int,
+        false_alarms: int
+    ):
+        """
+        Update domain scores based on Micro-Task A (Color Reaction).
+        Example logic:
+         - Good reaction time => +Focus
+         - Many misses => -Focus or +Stress
+         - Many false alarms => -GABA or +Impulsivity
+        """
+        # Placeholder thresholds: tweak or calibrate them with real data
+        if reaction_time < 300:  # e.g. "fast" reaction
+            # Slightly boost Focus
+            self._update_domain("Focus", +1.0, delta_conf=0.2)
+        else:
+            # Possibly drop Focus or raise Stress
+            self._update_domain("Focus", -0.5, delta_conf=0.1)
 
-#     elif ttype == "2back":
-#         # e.g. if misses are high or user says they performed poorly => low focus
-#         # or if they do well => high focus
-#         if ms <= 1 and fa <= 1:
-#             # good performance => + focus
-#             domain_scores["focus"] += 1.5 * user_confidence
-#             domain_conf["focus"] += 0.4
-#         else:
-#             domain_scores["focus"] -= 1.0 * user_confidence
-#             domain_conf["focus"] += 0.4
+        if misses > 3:
+            # Lower Focus or raise Stress
+            self._update_domain("Focus", -1.0, delta_conf=0.1)
+            self._update_domain("Stress", +0.5, delta_conf=0.1)
 
-#         # If false alarms > 2 => impulsivity => low GABA
-#         if fa > 2:
-#             domain_scores["gaba"] -= 1.0 * user_confidence
-#             domain_conf["gaba"] += 0.4
+        if false_alarms > 2:
+            # Possibly GABA deficiency or impulsivity
+            self._update_domain("GABA", -1.0, delta_conf=0.2)
 
-# def apply_question_answer(domain, value_shift, q_confidence, domain_scores, domain_conf):
-#     """
-#     domain: domain key or list of domain keys
-#     value_shift: how much we add or subtract from baseline
-#     q_confidence: 0..1 slider indicating user confidence
-#     domain_scores, domain_conf updated in place
-#     """
-#     if isinstance(domain, str):
-#         domain = [domain]
-#     for d in domain:
-#         domain_scores[d] += value_shift * q_confidence
-#         # Also boost confidence in that domain
-#         domain_conf[d] += 0.2  # or some constant - each question can add some confidence
+    def record_microtask_b_results(self, accuracy: float, user_quit: bool):
+        """
+        Update domain scores based on Micro-Task B (2-Back or Go/No-Go).
+        Example logic:
+         - Low accuracy => -Focus
+         - Quitting => -Motivation
+         - Good accuracy => +Focus
+        """
+        if accuracy < 0.5:
+            # If user accuracy is under 50%, penalize Focus
+            self._update_domain("Focus", -1.5, delta_conf=0.2)
+        else:
+            # Good performance
+            self._update_domain("Focus", +1.0, delta_conf=0.2)
 
-# def clamp_scores(domain_scores):
-#     """Ensure final domain scores are in [0, 10]."""
-#     for d in domain_scores:
-#         if domain_scores[d] < 0:
-#             domain_scores[d] = 0
-#         elif domain_scores[d] > 10:
-#             domain_scores[d] = 10
+        if user_quit:
+            # Might indicate low motivation or anxiety
+            self._update_domain("Motivation", -1.0, delta_conf=0.1)
 
-# def finalize_conflict_resolution(domain_scores, domain_conf, microtask_suspects, user_selfreport_suspects):
-#     """
-#     If there's a direct mismatch for a domain in microtask vs. self-report, 
-#     favor whichever has higher confidence rating. Or if user had extremely low confidence 
-#     overall, rely more on microtask data.
-#     microtask_suspects = dict of domain -> microtask_value
-#     user_selfreport_suspects = dict of domain -> selfreport_value
-#     This is just an example approach, you can refine logic as needed.
-#     """
-#     for d in DOMAINS:
-#         # If both microtask_suspects and user_selfreport_suspects contain domain
-#         # and are contradictory, pick the one with higher domain_conf or specifically 
-#         # a "microtask_conf" vs "self_conf" approach.
-#         # We'll do a simple approach: if domain_conf[d] < 1.0 and we do have microtask_suspects,
-#         # we might weigh the microtask_suspects more if it's strong.
-#         pass
-#     # For demonstration, not fully implemented.
+    def ask_context_and_arousal(self):
+        """
+        Q1 + Q1a: "How does today compare to your usual baseline?"
+                  "What is your overall state?"
+        Returns user choices and updates domain scores.
+        """
+        st.subheader("Context & Arousal")
 
-# def compute_domain_confidence_label(domain_conf):
-#     """
-#     Return a label for each domain based on domain_conf value (0..some upper).
-#     We'll treat > 1.5 as "High", between 0.5..1.5 as "Medium", <0.5 as "Low".
-#     """
-#     labels = {}
-#     for d, c in domain_conf.items():
-#         if c > 1.5:
-#             labels[d] = "High"
-#         elif c > 0.5:
-#             labels[d] = "Medium"
-#         else:
-#             labels[d] = "Low"
-#     return labels
+        # Q1: "How does today compare..."
+        q1_options = [
+            "Feels pretty typical",
+            "Notably better / calmer / more positive",
+            "Notably worse / more tense / lower than usual"
+        ]
+        q1_choice = st.radio("How does today compare to your usual mood/energy baseline?", q1_options)
+        conf_q1 = st.slider("How sure are you about your self-assessment? (Q1)", 0, 100, 80) / 100.0
+
+        # Basic domain logic for Q1
+        if q1_choice == q1_options[1]:
+            # "Better" => possibly better Mood, less Stress
+            self._update_domain("Mood", +1.0, confidence_slider=conf_q1)
+            self._update_domain("Stress", -0.5, confidence_slider=conf_q1)
+        elif q1_choice == q1_options[2]:
+            # "Worse" => possibly higher Stress, lower Mood
+            self._update_domain("Stress", +1.0, confidence_slider=conf_q1)
+            self._update_domain("Mood", -1.0, confidence_slider=conf_q1)
+
+        # Q1a: "What’s your overall state right now?"
+        q1a_options = ["Calm/relaxed", "Alert/energized", "Tense/jittery", "Tired/fatigued"]
+        q1a_choice = st.radio("What’s your overall state right now?", q1a_options)
+        conf_q1a = st.slider("How sure are you about this self-assessment? (Q1a)", 0, 100, 80) / 100.0
+
+        if q1a_choice == "Tense/jittery":
+            self._update_domain("Stress", +1.0, confidence_slider=conf_q1a)
+            self._update_domain("Anxiety", +0.5, confidence_slider=conf_q1a)
+        elif q1a_choice == "Tired/fatigued":
+            self._update_domain("Motivation", -1.0, confidence_slider=conf_q1a)
+            self._update_domain("Focus", -0.5, confidence_slider=conf_q1a)
+        elif q1a_choice == "Calm/relaxed":
+            # Slightly reduce stress if user is calm
+            self._update_domain("Stress", -0.5, confidence_slider=conf_q1a)
+
+        # Store user input
+        self.user_data["q1_choice"] = q1_choice
+        self.user_data["q1a_choice"] = q1a_choice
+
+    def ask_mood_check(self):
+        """
+        Q2: Mood rating
+        """
+        st.subheader("Mood Check")
+
+        q2_options = [
+            "Very positive/upbeat",
+            "Neutral/okay",
+            "Mild negative/worried",
+            "Strong negative/down/anxious"
+        ]
+        mood_choice = st.radio("Rate your emotional tone today:", q2_options)
+        conf_q2 = st.slider("How certain are you about this mood rating?", 0, 100, 80) / 100.0
+
+        # Example scoring:
+        if mood_choice == "Very positive/upbeat":
+            self._update_domain("Mood", +1.5, confidence_slider=conf_q2)
+        elif mood_choice == "Neutral/okay":
+            pass  # no major shift
+        elif mood_choice == "Mild negative/worried":
+            self._update_domain("Mood", -1.0, confidence_slider=conf_q2)
+        elif mood_choice == "Strong negative/down/anxious":
+            self._update_domain("Mood", -2.0, confidence_slider=conf_q2)
+
+        # Optional sub-item
+        enjoyment_options = ["Yes, strongly", "A little", "Not really"]
+        enjoyment_choice = st.radio("Are you enjoying or finding meaning in daily tasks?", enjoyment_options)
+        conf_enjoy = st.slider("Confidence in that statement?", 0, 100, 80) / 100.0
+
+        if enjoyment_choice == "Not really":
+            self._update_domain("Mood", -1.0, confidence_slider=conf_enjoy)
+            # Possibly also indicate lower Motivation
+            self._update_domain("Motivation", -0.5, confidence_slider=conf_enjoy)
+        elif enjoyment_choice == "Yes, strongly":
+            self._update_domain("Mood", +1.0, confidence_slider=conf_enjoy)
+            self._update_domain("Motivation", +0.5, confidence_slider=conf_enjoy)
+
+        # Store user input
+        self.user_data["mood_choice"] = mood_choice
+        self.user_data["enjoyment_choice"] = enjoyment_choice
+
+    def ask_social_connection(self):
+        """
+        Q3: Social + Connection
+        """
+        st.subheader("Social & Connection")
+
+        social_options = [
+            "Very connected",
+            "Somewhat connected",
+            "Isolated or avoided contact"
+        ]
+        social_choice = st.radio("How connected did you feel to others recently?", social_options)
+        conf_social = st.slider("Confidence in your self-assessment (social)?", 0, 100, 80) / 100.0
+
+        if social_choice == "Very connected":
+            self._update_domain("Social", +1.0, confidence_slider=conf_social)
+        elif social_choice == "Isolated or avoided contact":
+            self._update_domain("Social", -1.0, confidence_slider=conf_social)
+            # Possibly suspect mood or anxiety
+            self._update_domain("Mood", -0.5, confidence_slider=conf_social)
+
+        # Follow-Up
+        supportive_interaction = st.radio("Any meaningful interactions or support you found helpful?", ["Yes", "No"])
+        if supportive_interaction == "Yes":
+            self._update_domain("Social", +0.5, confidence_slider=conf_social)
+
+        # Store user input
+        self.user_data["social_choice"] = social_choice
+        self.user_data["supportive_interaction"] = supportive_interaction
+
+    def maybe_ask_clarifiers(self):
+        """
+        Adaptive clarifiers for domains with high suspicion or low confidence.
+        E.g. Stress/Anxiety clarifier, Motivation clarifier, Focus clarifier, GABA clarifier.
+        We only ask the top 1-2 clarifiers that are truly needed.
+        """
+
+        # Identify top domains that are either uncertain (low confidence) or strongly flagged.
+        # For demonstration, let's say if domain_conf < 0.3 or domain_scores < 4 or > 6, we might clarify.
+        suspicious_domains = []
+        for d in self.domains:
+            if self.domain_conf[d] < 0.3:
+                suspicious_domains.append(d)
+            # Or if the domain score is quite high or low, we might want more clarity
+            if self.domain_scores[d] > 7 or self.domain_scores[d] < 3:
+                suspicious_domains.append(d)
+
+        # Deduplicate domain list
+        suspicious_domains = list(set(suspicious_domains))
+
+        # Just ask up to 2 clarifiers to avoid user fatigue
+        suspicious_domains = suspicious_domains[:2]
+
+        for domain in suspicious_domains:
+            st.subheader(f"Clarifier for {domain}")
+            if domain in ["Stress", "Anxiety"]:
+                clarifier_q = st.radio(
+                    "Have you had episodes of racing thoughts, panic, or physical signs (heart pounding)?",
+                    ["No", "Maybe", "Yes"]
+                )
+                clar_conf = st.slider(f"Confidence in your answer about {domain}?", 0, 100, 80) / 100.0
+                if clarifier_q == "Yes":
+                    self._update_domain("Anxiety", +1.0, confidence_slider=clar_conf)
+                    self._update_domain("Stress", +1.0, confidence_slider=clar_conf)
+
+            if domain == "Motivation":
+                clarifier_q = st.radio(
+                    "Do you lack the drive to start tasks, or do you do them but feel no reward?",
+                    ["No", "Yes"]
+                )
+                clar_conf = st.slider("Confidence about motivation clarifier?", 0, 100, 80) / 100.0
+                if clarifier_q == "Yes":
+                    self._update_domain("Motivation", -1.0, confidence_slider=clar_conf)
+
+            if domain == "Focus":
+                clarifier_q = st.radio(
+                    "Do you find yourself impulsively switching tasks, or are you consistent?",
+                    ["Consistent/focused", "Often switch impulsively"]
+                )
+                clar_conf = st.slider("Confidence about focus clarifier?", 0, 100, 80) / 100.0
+                if clarifier_q == "Often switch impulsively":
+                    self._update_domain("Focus", -1.0, confidence_slider=clar_conf)
+                    # Possibly GABA link
+                    self._update_domain("GABA", -0.5, confidence_slider=clar_conf)
+
+            if domain == "GABA":
+                clarifier_q = st.radio(
+                    "Do you experience muscle tightness or difficulty relaxing daily?",
+                    ["No", "Occasionally", "Yes, frequently"]
+                )
+                clar_conf = st.slider("Confidence about GABA clarifier?", 0, 100, 80) / 100.0
+                if clarifier_q == "Yes, frequently":
+                    self._update_domain("GABA", -1.0, confidence_slider=clar_conf)
+
+            st.markdown("---")  # Just a separator
+
+    def maybe_run_microtask_b(self):
+        """
+        If Focus or Anxiety still uncertain after clarifiers, we can run Micro-Task B.
+        This is where you'd embed your 2-Back or Go/No-Go logic (task_2.html).
+        """
+        # Example: if domain_conf for Focus < 0.5 or Anxiety < 0.5, prompt micro-task B
+        need_focus_test = (self.domain_conf["Focus"] < 0.5)
+        need_anxiety_test = (self.domain_conf["Anxiety"] < 0.5)
+
+        if need_focus_test or need_anxiety_test:
+            st.subheader("Micro-Task B: 2-Back or Go/No-Go Test")
+
+            st.write("""
+                Below is a short task to further measure your focus/inhibitory control.
+                Please complete it in the embedded area.
+            """)
+
+            # EXAMPLE placeholder: embedding an HTML micro-task
+            # Here you'd do something like:
+            # microtask_b_component = st.components.v1.html(
+            #     open("scripts/task_2.html").read(),
+            #     height=400,
+            #     scrolling=True
+            # )
+            #
+            # Then you'd retrieve results from the user's actions:
+            # For demonstration, we just do user input boxes
+            accuracy = st.slider("Estimated accuracy (%) in Micro-Task B?", 0, 100, 80) / 100.0
+            user_quit = st.checkbox("I quit the task early")
+
+            # Update domain scores
+            self.record_microtask_b_results(accuracy, user_quit)
+
+    def final_check_and_label(self):
+        """
+        Q8: Single-word label, final normalization of domain scores, plus summary.
+        """
+        st.subheader("Final Quick Reflection")
+        single_word = st.text_input("In a single word, how do you label your overall mental state?")
+        self.user_data["final_label"] = single_word
+
+        # Normalize domain scores to 0–10
+        for d in self.domains:
+            if self.domain_scores[d] < 0:
+                self.domain_scores[d] = 0.0
+            elif self.domain_scores[d] > 10:
+                self.domain_scores[d] = 10.0
+
+        # Summarize
+        st.markdown("### Your Domain Scores")
+        for d in self.domains:
+            # Confidence interpretation
+            conf_label = "Low" if self.domain_conf[d] < 0.3 else \
+                         "High" if self.domain_conf[d] > 0.8 else "Medium"
+            st.write(f"**{d}**: {self.domain_scores[d]:.2f} (Confidence: {conf_label})")
+
+        # Optional: you can store or return these for later usage
+        st.success("Assessment complete! You can now move to recommended practices or logging.")
+
+    #######################
+    # Public method that runs the entire flow
+    #######################
+    def run_full_assessment(self):
+        """
+        Runs a full assessment flow in a linear sequence.
+        You can break this up across multiple tabs or pages in your main app if you prefer.
+        """
+
+        st.header("Neuro-Factor Assessment")
+
+        # 1. Micro-Task A
+        st.subheader("Micro-Task A: Color Reaction Test")
+        st.write("""
+        Below is a short color reaction test. 
+        Press spacebar when you see **Green**. 
+        Do **not** press when you see **Red**.
+        """)
+        # For demonstration, we just simulate user input of micro-task results.
+        # In a real deployment, embed the HTML/JS and capture data.
+        reaction_time = st.slider("Average Reaction Time (ms)", 150, 1000, 400)
+        hits = st.number_input("Number of correct hits (Green)", min_value=0, max_value=20, value=15)
+        misses = st.number_input("Number of misses (Green not clicked)", min_value=0, max_value=20, value=2)
+        false_alarms = st.number_input("Number of false alarms (clicked on Red)", min_value=0, max_value=20, value=1)
+
+        if st.button("Submit Micro-Task A Results"):
+            self.record_microtask_a_results(reaction_time, hits, misses, false_alarms)
+            st.success("Micro-Task A data recorded.")
+
+        st.markdown("---")
+
+        # 2. Q1 + Q1a
+        self.ask_context_and_arousal()
+        st.markdown("---")
+
+        # 3. Mood Check
+        self.ask_mood_check()
+        st.markdown("---")
+
+        # 4. Social + Connection
+        self.ask_social_connection()
+        st.markdown("---")
+
+        # 5. Adaptive clarifiers
+        self.maybe_ask_clarifiers()
+        st.markdown("---")
+
+        # 6. (Potential) Micro-Task B
+        self.maybe_run_microtask_b()
+        st.markdown("---")
+
+        # 7. Final Label & Summaries
+        self.final_check_and_label()
+
+
+##########################
+# Streamlit Page or Utility Function
+##########################
+def run_assessment_flow():
+    """
+    Demonstration function to run the entire assessment from start to finish
+    in a single Streamlit page.
+    """
+    assessment = NeuroAssessment()
+    assessment.run_full_assessment()
+
+    # If you need the final results:
+    final_scores = assessment.domain_scores
+    final_conf = assessment.domain_conf
+    st.write("**Final Scores**: ", final_scores)
+    st.write("**Final Confidences**: ", final_conf)
+
+    # You can return them for further usage:
+    return final_scores, final_conf
+
+
+# If you want to test in isolation: 
+# if __name__ == "__main__":
+#     import streamlit as st
+#     run_assessment_flow()
