@@ -411,6 +411,7 @@ def run_assessment_flow():
     Demonstration function to run the entire assessment from start to finish
     in a single Streamlit page.
     """
+    st.title("Assessment")
     assessment = NeuroAssessment()
     assessment.run_full_assessment()
 
