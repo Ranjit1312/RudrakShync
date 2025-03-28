@@ -1,5 +1,6 @@
 import streamlit as st
-from modules import auth, assessment, profile, journal, streak
+#from modules import auth, assessment, profile, journal, streak
+import auth, assessment, profile, journal, streak
 
 st.set_page_config(page_title="RudrakshYnc", layout="wide")
 
