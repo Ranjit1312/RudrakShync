@@ -55,6 +55,73 @@ class NeuroAssessment:
         # Increase domain confidence (capped at 1.0)
         self.domain_conf[domain] = min(1.0, self.domain_conf[domain] + delta_conf * confidence_slider)
 
+    def run_microtask_and_get_results():
+        """
+        Embeds Microtask A and waits for postMessage with results.
+        Returns: parsed results dict or None
+        """
+        st.subheader("Microtask A – Go/No-Go Reaction Test")
+        st.write("Complete the task below. Press SPACE on green, ignore red.")
+    
+        # Read HTML content
+        with open("microtask_go_nogo.html") as f:
+            html_code = f.read()
+    
+        # Embed HTML and JS listener
+        result = components.html(f"""
+            <script>
+            window.addEventListener("message", (event) => {{
+                if (event.data?.type === "gonogo_results") {{
+                    const payload = JSON.stringify(event.data.data);
+                    window.parent.postMessage({{ type: "streamlit:setComponentValue", value: payload }}, "*");
+                }}
+            }});
+            </script>
+            {html_code}
+        """, height=600)
+    
+        # Input field to capture streamlit:setComponentValue result
+        result_json = st.experimental_get_query_params().get("gonogo_results", [None])[0]
+        if result_json:
+            try:
+                return json.loads(result_json)
+            except:
+                st.error("Failed to parse microtask result.")
+        return None
+    
+    def run_microtask_b_and_get_results():
+        """
+        Embeds Microtask A and waits for postMessage with results.
+        Returns: parsed results dict or None
+        """
+        st.subheader("Microtask A – Go/No-Go Reaction Test")
+        st.write("Complete the task below. Press SPACE on green, ignore red.")
+    
+        # Read HTML content
+        with open("microtask_go_nogo.html") as f:
+            html_code = f.read()
+    
+        # Embed HTML and JS listener
+        result = components.html(f"""
+            <script>
+            window.addEventListener("message", (event) => {{
+                if (event.data?.type === "gonogo_results") {{
+                    const payload = JSON.stringify(event.data.data);
+                    window.parent.postMessage({{ type: "streamlit:setComponentValue", value: payload }}, "*");
+                }}
+            }});
+            </script>
+            {html_code}
+        """, height=600)
+    
+        # Input field to capture streamlit:setComponentValue result
+        result_json = st.experimental_get_query_params().get("gonogo_results", [None])[0]
+        if result_json:
+            try:
+                return json.loads(result_json)
+            except:
+                st.error("Failed to parse microtask result.")
+        return None
     def record_microtask_a_results(
         self,
         reaction_time: float,
@@ -368,14 +435,13 @@ class NeuroAssessment:
         """)
         # For demonstration, we just simulate user input of micro-task results.
         # In a real deployment, embed the HTML/JS and capture data.
-        reaction_time = st.slider("Average Reaction Time (ms)", 150, 1000, 400)
-        hits = st.number_input("Number of correct hits (Green)", min_value=0, max_value=20, value=15)
-        misses = st.number_input("Number of misses (Green not clicked)", min_value=0, max_value=20, value=2)
-        false_alarms = st.number_input("Number of false alarms (clicked on Red)", min_value=0, max_value=20, value=1)
-
-        if st.button("Submit Micro-Task A Results"):
-            self.record_microtask_a_results(reaction_time, hits, misses, false_alarms)
-            st.success("Micro-Task A data recorded.")
+        results = run_microtask_and_get_results()
+        if results:
+            avg_rt = sum(results["reactionTimes"]) / max(1, len(results["reactionTimes"]))
+            hits = results["correctHits"]
+            misses = results["misses"]
+            false_alarms = results["falseAlarms"]
+            assessment.record_microtask_a_results(avg_rt, hits, misses, false_alarms)
 
         st.markdown("---")
 
