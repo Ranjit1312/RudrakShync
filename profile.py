@@ -1,6 +1,7 @@
 import streamlit as st
 import matplotlib.pyplot as plt
 import math
+from supabase_client import supabase
 
 ############################
 # Domain -> whether higher raw means negative
@@ -49,73 +50,73 @@ def fetch_practice(domain: str, polarity: str):
     polarity is 'positive' or 'negative'.
     """
     # PSEUDO:
-    # practice = supabase.table("practices").select("*")\
-    #     .eq("factor", domain)\
-    #     .eq("polarity", polarity)\
-    #     .single().execute()
-    # return practice.data
-    return {
-        "id": 123,
-        "factor": domain,
-        "polarity": polarity,
-        "title": f"{domain} ({polarity}) Practice",
-        "description": f"Practice for {domain} with polarity {polarity}."
-    }
+    practice = supabase.table("practices").select("*")\
+        .eq("factor", domain)\
+        .eq("polarity", polarity)\
+        .single().execute()
+    return practice.data
+    # return {
+    #     "id": 123,
+    #     "factor": domain,
+    #     "polarity": polarity,
+    #     "title": f"{domain} ({polarity}) Practice",
+    #     "description": f"Practice for {domain} with polarity {polarity}."
+    # }
 
 def fetch_practice_steps(practice_id: int):
     """
     Return all steps (1..4) for a practice from the practice_steps table.
     """
     # PSEUDO:
-    # steps = supabase.table("practice_steps").select("*")\
-    #      .eq("practice_id", practice_id)\
-    #      .order("step_number", ascending=True).execute()
-    # return steps.data
-    return [
-        {
-            "id": 1001,
-            "practice_id": practice_id,
-            "step_number": 1,
-            "instruction": "Breathe deeply for 30s",
-            "before_prompt": "How stressed do you feel before Step 1?",
-            "after_prompt": "Any change after Step 1?"
-        },
-        {
-            "id": 1002,
-            "practice_id": practice_id,
-            "step_number": 2,
-            "instruction": "Focus on relaxing your muscles",
-            "before_prompt": "Rate tension before Step 2",
-            "after_prompt": "Note any difference after Step 2"
-        },
-        {
-            "id": 1003,
-            "practice_id": practice_id,
-            "step_number": 3,
-            "instruction": "Visualize a calming scene for 1 min",
-            "before_prompt": "Optional reflection before Step 3",
-            "after_prompt": "Describe your experience after Step 3"
-        },
-        {
-            "id": 1004,
-            "practice_id": practice_id,
-            "step_number": 4,
-            "instruction": "Final mindful breathing for 1 min",
-            "before_prompt": "Check your readiness for final step",
-            "after_prompt": "Final reflection"
-        }
-    ]
+    steps = supabase.table("practice_steps").select("*")\
+         .eq("practice_id", practice_id)\
+         .order("step_number", ascending=True).execute()
+    return steps.data
+    # return [
+    #     {
+    #         "id": 1001,
+    #         "practice_id": practice_id,
+    #         "step_number": 1,
+    #         "instruction": "Breathe deeply for 30s",
+    #         "before_prompt": "How stressed do you feel before Step 1?",
+    #         "after_prompt": "Any change after Step 1?"
+    #     },
+    #     {
+    #         "id": 1002,
+    #         "practice_id": practice_id,
+    #         "step_number": 2,
+    #         "instruction": "Focus on relaxing your muscles",
+    #         "before_prompt": "Rate tension before Step 2",
+    #         "after_prompt": "Note any difference after Step 2"
+    #     },
+    #     {
+    #         "id": 1003,
+    #         "practice_id": practice_id,
+    #         "step_number": 3,
+    #         "instruction": "Visualize a calming scene for 1 min",
+    #         "before_prompt": "Optional reflection before Step 3",
+    #         "after_prompt": "Describe your experience after Step 3"
+    #     },
+    #     {
+    #         "id": 1004,
+    #         "practice_id": practice_id,
+    #         "step_number": 4,
+    #         "instruction": "Final mindful breathing for 1 min",
+    #         "before_prompt": "Check your readiness for final step",
+    #         "after_prompt": "Final reflection"
+    #     }
+    # ]
 
 def save_user_sequence(user_id, step_ids):
     """
     Insert a new record into user_sequences with the given array of step_ids.
     """
     # PSEUDO:
-    # supabase.table("user_sequences").insert({
-    #     "user_id": user_id,
-    #     "step_ids": step_ids
-    # }).execute()
-    pass
+    supabase.table("user_sequences").insert({
+        "user_id": user_id,
+        "step_ids": step_ids
+    }).execute()
+    # pass
 
 ############################
 # MAIN: show_profile
