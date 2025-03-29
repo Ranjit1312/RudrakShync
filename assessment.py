@@ -94,11 +94,10 @@ class NeuroAssessment:
         Embeds Microtask A and waits for postMessage with results.
         Returns: parsed results dict or None
         """
-        st.subheader("Microtask A – Go/No-Go Reaction Test")
-        st.write("Complete the task below. Press SPACE on green, ignore red.")
+        st.subheader("Microtask B – TwoBack Test")
     
         # Read HTML content
-        with open("microtask_go_nogo.html") as f:
+        with open("task_twoback.html") as f:
             html_code = f.read()
     
         # Embed HTML and JS listener
