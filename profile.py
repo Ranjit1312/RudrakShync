@@ -125,15 +125,30 @@ def show_profile():
     st.title("Your Profile & Customized Practice")
 
     # 1) Check user
-    user_id = st.session_state.get("user")  # e.g. user is a dict or just an ID
-    if not user_id:
+    user_email = st.session_state.get("user_email")
+    if not user_email:
         st.warning("Please log in first to see your personalized profile.")
         return
 
-    # 2) Check raw scores from [0..10]
-    raw_scores = st.session_state.get("assessment_scores", {})
-    if not raw_scores:
-        st.warning("Please take the assessment first.")
+    # 2) Fetch latest scores from Supabase
+    try:
+        response = supabase.table("assessments") \
+            .select("scores, timestamp") \
+            .or_(
+                f"user_email.eq.{user_email},session_id.eq.{st.session_state['session_id']}"
+            ) \
+            .order("timestamp", desc=True) \
+            .limit(1) \
+            .execute()
+
+        if not response.data or not response.data[0].get("scores"):
+            st.warning("No past assessment found. Please take the assessment first.")
+            return
+
+        raw_scores = response.data[0]["scores"]
+
+    except Exception as e:
+        st.error(f"Error fetching scores: {e}")
         return
 
     # 3) Normalize scores => [-1..+1]
