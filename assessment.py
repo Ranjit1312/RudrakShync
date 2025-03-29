@@ -2,7 +2,8 @@
 # assessment.py
 ##########################
 import streamlit as st
-
+import streamlit.components.v1 as components
+import json
 # If you need typed dictionaries:
 from typing import Dict, Any, Optional
 
@@ -89,38 +90,31 @@ class NeuroAssessment:
                 st.error("Failed to parse microtask result.")
         return None
     
-    def run_microtask_b_and_get_results():
-        """
-        Embeds Microtask A and waits for postMessage with results.
-        Returns: parsed results dict or None
-        """
-        st.subheader("Microtask B – TwoBack Test")
+    # def run_twoback_microtask():
+    #     with open("microtask_2back.html") as f:
+    #         html_code = f.read()
     
-        # Read HTML content
-        with open("task_twoback.html") as f:
-            html_code = f.read()
+    #     # Display and setup listener
+    #     components.html(f"""
+    #         <script>
+    #         window.addEventListener("message", (event) => {{
+    #             if (event.data?.type === "twoback_results") {{
+    #                 const payload = JSON.stringify(event.data.data);
+    #                 window.parent.postMessage({{ type: "streamlit:setComponentValue", value: payload }}, "*");
+    #             }}
+    #         }});
+    #         </script>
+    #         {html_code}
+    #     """, height=600)
     
-        # Embed HTML and JS listener
-        result = components.html(f"""
-            <script>
-            window.addEventListener("message", (event) => {{
-                if (event.data?.type === "gonogo_results") {{
-                    const payload = JSON.stringify(event.data.data);
-                    window.parent.postMessage({{ type: "streamlit:setComponentValue", value: payload }}, "*");
-                }}
-            }});
-            </script>
-            {html_code}
-        """, height=600)
-    
-        # Input field to capture streamlit:setComponentValue result
-        result_json = st.experimental_get_query_params().get("gonogo_results", [None])[0]
-        if result_json:
-            try:
-                return json.loads(result_json)
-            except:
-                st.error("Failed to parse microtask result.")
-        return None
+    #     result_json = st.experimental_get_query_params().get("twoback_results", [None])[0]
+    #     if result_json:
+    #         try:
+    #             return json.loads(result_json)
+    #         except:
+    #             st.error("Failed to parse 2-Back result.")
+    #     return None
+        
     def record_microtask_a_results(
         self,
         reaction_time: float,
@@ -152,24 +146,35 @@ class NeuroAssessment:
             # Possibly GABA deficiency or impulsivity
             self._update_domain("GABA", -1.0, delta_conf=0.2)
 
-    def record_microtask_b_results(self, accuracy: float, user_quit: bool):
+    def record_microtask_b_results(self, results: dict):
         """
-        Update domain scores based on Micro-Task B (2-Back or Go/No-Go).
-        Example logic:
-         - Low accuracy => -Focus
-         - Quitting => -Motivation
-         - Good accuracy => +Focus
+        Update domain scores based on actual 2-Back micro-task results.
+        Inputs: hits, falseAlarms, misses
+        Scoring logic:
+         - High misses => low focus or memory
+         - High false alarms => impulsivity or poor inhibitory control
+         - Good hits with low errors => improved Focus
         """
-        if accuracy < 0.5:
-            # If user accuracy is under 50%, penalize Focus
-            self._update_domain("Focus", -1.5, delta_conf=0.2)
+        hits = results.get("hits", 0)
+        false_alarms = results.get("falseAlarms", 0)
+        misses = results.get("misses", 0)
+        total = hits + false_alarms + misses
+    
+        # Compute accuracy
+        accuracy = hits / total if total else 0.0
+    
+        if accuracy >= 0.7 and false_alarms < 3:
+            self._update_domain("Focus", +1.5, delta_conf=0.3)
+        elif accuracy >= 0.5:
+            self._update_domain("Focus", +0.5, delta_conf=0.2)
         else:
-            # Good performance
-            self._update_domain("Focus", +1.0, delta_conf=0.2)
-
-        if user_quit:
-            # Might indicate low motivation or anxiety
-            self._update_domain("Motivation", -1.0, delta_conf=0.1)
+            self._update_domain("Focus", -1.0, delta_conf=0.2)
+    
+        if false_alarms > 3:
+            self._update_domain("GABA", -0.5, delta_conf=0.2)
+    
+        if misses > 4:
+            self._update_domain("Motivation", -0.5, delta_conf=0.1)
 
     def ask_context_and_arousal(self):
         """
@@ -360,33 +365,37 @@ class NeuroAssessment:
         If Focus or Anxiety still uncertain after clarifiers, we can run Micro-Task B.
         This is where you'd embed your 2-Back or Go/No-Go logic (task_2.html).
         """
-        # Example: if domain_conf for Focus < 0.5 or Anxiety < 0.5, prompt micro-task B
+       # Check if the user needs more clarity
         need_focus_test = (self.domain_conf["Focus"] < 0.5)
         need_anxiety_test = (self.domain_conf["Anxiety"] < 0.5)
-
+    
         if need_focus_test or need_anxiety_test:
-            st.subheader("Micro-Task B: 2-Back or Go/No-Go Test")
-
-            st.write("""
-                Below is a short task to further measure your focus/inhibitory control.
-                Please complete it in the embedded area.
-            """)
-
-            # EXAMPLE placeholder: embedding an HTML micro-task
-            # Here you'd do something like:
-            # microtask_b_component = st.components.v1.html(
-            #     open("scripts/task_2.html").read(),
-            #     height=400,
-            #     scrolling=True
-            # )
-            #
-            # Then you'd retrieve results from the user's actions:
-            # For demonstration, we just do user input boxes
-            accuracy = st.slider("Estimated accuracy (%) in Micro-Task B?", 0, 100, 80) / 100.0
-            user_quit = st.checkbox("I quit the task early")
-
-            # Update domain scores
-            self.record_microtask_b_results(accuracy, user_quit)
+            st.subheader("Micro-Task B: 2-Back Memory Test")
+            st.write("Press SPACE when a letter matches the one from 2 steps ago. Complete the task below:")
+    
+            with open("microtask_2back.html") as f:
+                html_code = f.read()
+    
+            components.html(f"""
+                <script>
+                window.addEventListener("message", (event) => {{
+                    if (event.data?.type === "twoback_results") {{
+                        const payload = JSON.stringify(event.data.data);
+                        window.parent.postMessage({{ type: "streamlit:setComponentValue", value: payload }}, "*");
+                    }}
+                }});
+                </script>
+                {html_code}
+            """, height=600)
+    
+            result_json = st.experimental_get_query_params().get("twoback_results", [None])[0]
+            if result_json:
+                try:
+                    results = json.loads(result_json)
+                    self.record_microtask_b_results(results)
+                    st.success("Micro-task B results processed.")
+                except Exception as e:
+                    st.error(f"Error parsing results: {e}")
 
     def final_check_and_label(self):
         """
