@@ -4,8 +4,14 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import json
-# If you need typed dictionaries:
-from typing import Dict, Any, Optional
+from typing import Dict, Any
+from datetime import datetime  # <-- Added if you need datetime.utcnow() for saving
+from supabase_client import supabase_client
+# If you're using supabase, ensure you have something like:
+# from supabase import create_client, Client
+# SUPABASE_URL = "..."
+# SUPABASE_ANON_KEY = "..."
+# supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 class NeuroAssessment:
     """
@@ -54,20 +60,23 @@ class NeuroAssessment:
         self.domain_scores[domain] += effective_delta
 
         # Increase domain confidence (capped at 1.0)
-        self.domain_conf[domain] = min(1.0, self.domain_conf[domain] + delta_conf * confidence_slider)
+        self.domain_conf[domain] = min(
+            1.0, 
+            self.domain_conf[domain] + (delta_conf * confidence_slider)
+        )
 
-    def run_microtask_and_get_results():
+    def run_microtask_and_get_results(self):  # <-- Added 'self' here
         """
         Embeds Microtask A and waits for postMessage with results.
         Returns: parsed results dict or None
         """
         st.subheader("Microtask A – Go/No-Go Reaction Test")
         st.write("Complete the task below. Press SPACE on green, ignore red.")
-    
+
         # Read HTML content
         with open("microtask_go_nogo.html") as f:
             html_code = f.read()
-    
+
         # Embed HTML and JS listener
         result = components.html(f"""
             <script>
@@ -80,7 +89,7 @@ class NeuroAssessment:
             </script>
             {html_code}
         """, height=600)
-    
+
         # Input field to capture streamlit:setComponentValue result
         result_json = st.experimental_get_query_params().get("gonogo_results", [None])[0]
         if result_json:
@@ -89,32 +98,7 @@ class NeuroAssessment:
             except:
                 st.error("Failed to parse microtask result.")
         return None
-    
-    # def run_twoback_microtask():
-    #     with open("microtask_2back.html") as f:
-    #         html_code = f.read()
-    
-    #     # Display and setup listener
-    #     components.html(f"""
-    #         <script>
-    #         window.addEventListener("message", (event) => {{
-    #             if (event.data?.type === "twoback_results") {{
-    #                 const payload = JSON.stringify(event.data.data);
-    #                 window.parent.postMessage({{ type: "streamlit:setComponentValue", value: payload }}, "*");
-    #             }}
-    #         }});
-    #         </script>
-    #         {html_code}
-    #     """, height=600)
-    
-    #     result_json = st.experimental_get_query_params().get("twoback_results", [None])[0]
-    #     if result_json:
-    #         try:
-    #             return json.loads(result_json)
-    #         except:
-    #             st.error("Failed to parse 2-Back result.")
-    #     return None
-        
+
     def record_microtask_a_results(
         self,
         reaction_time: float,
@@ -159,20 +143,20 @@ class NeuroAssessment:
         false_alarms = results.get("falseAlarms", 0)
         misses = results.get("misses", 0)
         total = hits + false_alarms + misses
-    
+
         # Compute accuracy
         accuracy = hits / total if total else 0.0
-    
+
         if accuracy >= 0.7 and false_alarms < 3:
             self._update_domain("Focus", +1.5, delta_conf=0.3)
         elif accuracy >= 0.5:
             self._update_domain("Focus", +0.5, delta_conf=0.2)
         else:
             self._update_domain("Focus", -1.0, delta_conf=0.2)
-    
+
         if false_alarms > 3:
             self._update_domain("GABA", -0.5, delta_conf=0.2)
-    
+
         if misses > 4:
             self._update_domain("Motivation", -0.5, delta_conf=0.1)
 
@@ -266,7 +250,7 @@ class NeuroAssessment:
 
     def ask_social_connection(self):
         """
-        Q3: Social + Connection
+        Q3: Social & Connection
         """
         st.subheader("Social & Connection")
 
@@ -301,30 +285,25 @@ class NeuroAssessment:
         We only ask the top 1-2 clarifiers that are truly needed.
         """
 
-        # Identify top domains that are either uncertain (low confidence) or strongly flagged.
-        # For demonstration, let's say if domain_conf < 0.3 or domain_scores < 4 or > 6, we might clarify.
         suspicious_domains = []
         for d in self.domains:
+            # If domain_conf < 0.3 or domain_scores < 3 or > 7, we might clarify.
             if self.domain_conf[d] < 0.3:
                 suspicious_domains.append(d)
-            # Or if the domain score is quite high or low, we might want more clarity
             if self.domain_scores[d] > 7 or self.domain_scores[d] < 3:
                 suspicious_domains.append(d)
 
-        # Deduplicate domain list
-        suspicious_domains = list(set(suspicious_domains))
-
-        # Just ask up to 2 clarifiers to avoid user fatigue
-        suspicious_domains = suspicious_domains[:2]
+        # Deduplicate and limit to 2 clarifiers
+        suspicious_domains = list(set(suspicious_domains))[:2]
 
         for domain in suspicious_domains:
             st.subheader(f"Clarifier for {domain}")
             if domain in ["Stress", "Anxiety"]:
                 clarifier_q = st.radio(
-                    "Have you had episodes of racing thoughts, panic, or physical signs (heart pounding)?",
+                    f"Have you had episodes of racing thoughts, panic, or physical signs (heart pounding) related to {domain}?",
                     ["No", "Maybe", "Yes"]
                 )
-                clar_conf = st.slider(f"Confidence in your answer about {domain}?", 0, 100, 80) / 100.0
+                clar_conf = st.slider(f"Confidence about {domain} clarifier?", 0, 100, 80) / 100.0
                 if clarifier_q == "Yes":
                     self._update_domain("Anxiety", +1.0, confidence_slider=clar_conf)
                     self._update_domain("Stress", +1.0, confidence_slider=clar_conf)
@@ -358,24 +337,23 @@ class NeuroAssessment:
                 if clarifier_q == "Yes, frequently":
                     self._update_domain("GABA", -1.0, confidence_slider=clar_conf)
 
-            st.markdown("---")  # Just a separator
+            st.markdown("---")
 
     def maybe_run_microtask_b(self):
         """
         If Focus or Anxiety still uncertain after clarifiers, we can run Micro-Task B.
         This is where you'd embed your 2-Back or Go/No-Go logic (task_2.html).
         """
-       # Check if the user needs more clarity
         need_focus_test = (self.domain_conf["Focus"] < 0.5)
         need_anxiety_test = (self.domain_conf["Anxiety"] < 0.5)
-    
+
         if need_focus_test or need_anxiety_test:
             st.subheader("Micro-Task B: 2-Back Memory Test")
             st.write("Press SPACE when a letter matches the one from 2 steps ago. Complete the task below:")
-    
+
             with open("microtask_2back.html") as f:
                 html_code = f.read()
-    
+
             components.html(f"""
                 <script>
                 window.addEventListener("message", (event) => {{
@@ -387,7 +365,7 @@ class NeuroAssessment:
                 </script>
                 {html_code}
             """, height=600)
-    
+
             result_json = st.experimental_get_query_params().get("twoback_results", [None])[0]
             if result_json:
                 try:
@@ -415,13 +393,14 @@ class NeuroAssessment:
         # Summarize
         st.markdown("### Your Domain Scores")
         for d in self.domains:
-            # Confidence interpretation
-            conf_label = "Low" if self.domain_conf[d] < 0.3 else \
-                         "High" if self.domain_conf[d] > 0.8 else "Medium"
+            conf_label = (
+                "Low" if self.domain_conf[d] < 0.3 else
+                "High" if self.domain_conf[d] > 0.8 else
+                "Medium"
+            )
             st.write(f"**{d}**: {self.domain_scores[d]:.2f} (Confidence: {conf_label})")
 
-        # Optional: you can store or return these for later usage
-        st.success("Assessment complete! You can now move to recommended practices or login.")
+        st.success("Assessment complete! You can now move on to recommended practices or login.")
 
     #######################
     # Public method that runs the entire flow
@@ -429,9 +408,7 @@ class NeuroAssessment:
     def run_full_assessment(self):
         """
         Runs a full assessment flow in a linear sequence.
-        You can break this up across multiple tabs or pages in your main app if you prefer.
         """
-
         st.header("Neuro-Factor Assessment")
 
         # 1. Micro-Task A
@@ -441,8 +418,7 @@ class NeuroAssessment:
         Press spacebar when you see **Green**. 
         Do **not** press when you see **Red**.
         """)
-        # For demonstration, we just simulate user input of micro-task results.
-        # In a real deployment, embed the HTML/JS and capture data.
+
         results = self.run_microtask_and_get_results()
         if results:
             avg_rt = sum(results["reactionTimes"]) / max(1, len(results["reactionTimes"]))
@@ -469,7 +445,7 @@ class NeuroAssessment:
         self.maybe_ask_clarifiers()
         st.markdown("---")
 
-        # 6. (Potential) Micro-Task B
+        # 6. Possibly run Micro-Task B
         self.maybe_run_microtask_b()
         st.markdown("---")
 
@@ -495,11 +471,12 @@ def run_assessment_flow():
     st.write("**Final Scores**: ", final_scores)
     st.write("**Final Confidences**: ", final_conf)
 
-    # Save to Supabase
+    # Example: Saving results to Supabase (requires a supabase client)
     if st.button("Save Assessment"):
+        # Make sure session_id, user_email, and supabase are properly defined in your app
         session_id = st.session_state.get("session_id")
         user_email = st.session_state.get("user_email", None)
-        
+
         entry = {
             "user_email": user_email,
             "session_id": session_id,
@@ -508,18 +485,9 @@ def run_assessment_flow():
             "confidence": final_conf,
             "source": "assessment"
         }
-      
+
         try:
             supabase.table("assessments").insert(entry).execute()
             st.success("Assessment saved successfully.")
         except Exception as e:
             st.error(f"Error saving assessment: {e}")
-
-    # You can return them for further usage:
-    # return final_scores, final_conf
-
-
-# If you want to test in isolation: 
-# if __name__ == "__main__":
-#     import streamlit as st
-#     run_assessment_flow()
