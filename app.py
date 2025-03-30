@@ -2,7 +2,7 @@ import streamlit as st
 #from modules import auth, assessment, profile, journal, streak
 import auth, assessment, profile, journal, streak
 
-st.set_page_config(page_title="RudrakshYnc", layout="wide")
+st.set_page_config(page_title="RudrakShync", layout="wide")
 
 tabs = {
     "About Me": auth.show_about,
