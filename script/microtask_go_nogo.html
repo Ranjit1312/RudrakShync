@@ -1,89 +1,219 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Go/No-Go Reaction Test</title>
-</head>
-<body style="text-align:center; font-family:sans-serif;">
-  <h2>Go/No-Go Task</h2>
-  <p>Press the <strong>SPACEBAR</strong> when the screen turns <span style="color:green;">green</span>.<br>
-  Do <strong>NOT press</strong> when it turns <span style="color:red;">red</span>.</p>
-  <div id="testBox" style="width:200px; height:200px; margin:auto; background-color:gray; margin-top:30px;"></div>
-  <div style="margin-top:20px;" id="results"></div>
-  <script>
-    let trials = 20;
-    let trialCount = 0;
-    let goColor = "green";
-    let noGoColor = "red";
-    let waitTime = 1000;
-    let maxWait = 2000;
-    let startTime = 0;
-    let listening = false;
-    let data = {
-      reactionTimes: [],
-      falseAlarms: 0,
-      misses: 0,
-      correctHits: 0,
-      totalGo: 0,
-      totalNoGo: 0
-    };
-
-    function nextTrial() {
-      trialCount++;
-      listening = false;
-      let isGo = Math.random() > 0.4;
-      let color = isGo ? goColor : noGoColor;
-      if (isGo) data.totalGo++; else data.totalNoGo++;
-      document.getElementById("testBox").style.backgroundColor = "gray";
-
-      setTimeout(() => {
-        document.getElementById("testBox").style.backgroundColor = color;
-        startTime = new Date().getTime();
-        listening = true;
-        if (isGo) {
-          setTimeout(() => {
-            if (listening) {
-              data.misses++;
-              listening = false;
-            }
-            if (trialCount < trials) nextTrial(); else finish();
-          }, 1500);
-        } else {
-          setTimeout(() => {
-            listening = false;
-            if (trialCount < trials) nextTrial(); else finish();
-          }, 1500);
-        }
-      }, Math.random() * maxWait + waitTime);
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #dbeafe, #f0f9ff);
+      color: #111;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
     }
 
-    document.body.onkeyup = function(e) {
-      if (e.code === "Space" && listening) {
-        let rt = new Date().getTime() - startTime;
-        let boxColor = document.getElementById("testBox").style.backgroundColor;
-        if (boxColor === goColor) {
-          data.reactionTimes.push(rt);
-          data.correctHits++;
-        } else {
-          data.falseAlarms++;
-        }
-        listening = false;
-      }
+    h2 {
+      margin-top: 20px;
+    }
+
+    #testBox {
+      width: 250px;
+      height: 250px;
+      background-color: gray;
+      margin-top: 30px;
+      border-radius: 20px;
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 24px;
+      font-weight: bold;
+      transition: background-color 0.3s ease;
+      user-select: none;
+    }
+
+    #metrics, #results, #countdown, #controls {
+      margin-top: 20px;
+      text-align: center;
+    }
+
+    .button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin: 10px;
+      border: none;
+      border-radius: 8px;
+      background-color: #2563eb;
+      color: white;
+      cursor: pointer;
+    }
+
+    .button:disabled {
+      background-color: #9ca3af;
+      cursor: not-allowed;
+    }
+
+    .flash {
+      animation: flash 0.2s ease;
+    }
+
+    @keyframes flash {
+      from { box-shadow: 0 0 10px 5px rgba(255,255,255,0.8); }
+      to { box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <h2>Go/No-Go Reaction Test</h2>
+  <p>Press <strong>SPACEBAR</strong> or <strong>Tap</strong> when the screen turns <span style="color:green;">green</span>. Do <strong>NOT</strong> respond when red.</p>
+
+  <div id="countdown">Starting in <span id="count">3</span>...</div>
+  <div id="testBox">WAIT</div>
+
+  <div id="controls">
+    <button id="pauseBtn" class="button">Pause</button>
+    <button id="resumeBtn" class="button" disabled>Resume</button>
+  </div>
+
+  <div id="metrics">
+    <p>Trial: <span id="trialNum">0</span> / 20</p>
+    <p>Hits: <span id="hits">0</span> | Misses: <span id="misses">0</span> | False Alarms: <span id="falseAlarms">0</span></p>
+    <p>Average Reaction Time: <span id="avgRT">-</span></p>
+  </div>
+
+  <div id="results"></div>
+
+  <script>
+    const testBox = document.getElementById("testBox");
+    const trialNum = document.getElementById("trialNum");
+    const hits = document.getElementById("hits");
+    const misses = document.getElementById("misses");
+    const falseAlarms = document.getElementById("falseAlarms");
+    const avgRT = document.getElementById("avgRT");
+    const countdownEl = document.getElementById("count");
+    const pauseBtn = document.getElementById("pauseBtn");
+    const resumeBtn = document.getElementById("resumeBtn");
+    const results = document.getElementById("results");
+
+    let trials = 20, trialCount = 0;
+    let listening = false, paused = false, startTime = 0;
+    let isGo = false;
+    let goColor = 'green', noGoColor = 'red';
+
+    const data = { reactionTimes: [], falseAlarms: 0, misses: 0, correctHits: 0, totalGo: 0, totalNoGo: 0 };
+
+    const updateMetrics = () => {
+      trialNum.textContent = trialCount;
+      hits.textContent = data.correctHits;
+      misses.textContent = data.misses;
+      falseAlarms.textContent = data.falseAlarms;
+      avgRT.textContent = data.reactionTimes.length ? Math.round(data.reactionTimes.reduce((a,b)=>a+b,0)/data.reactionTimes.length) + ' ms' : '-';
     };
 
-    function finish() {
-      let avgRT = Math.round(data.reactionTimes.reduce((a, b) => a + b, 0) / (data.reactionTimes.length || 1));
-      let html = `
-        <h3>Results</h3>
-        <p><strong>Avg Reaction Time:</strong> ${avgRT} ms</p>
-        <p><strong>Correct Hits:</strong> ${data.correctHits} / ${data.totalGo}</p>
-        <p><strong>False Alarms:</strong> ${data.falseAlarms} / ${data.totalNoGo}</p>
-        <p><strong>Misses:</strong> ${data.misses}</p>
-      `;
-      document.getElementById("results").innerHTML = html;
+    const flashBox = () => {
+      testBox.classList.add("flash");
+      setTimeout(() => testBox.classList.remove("flash"), 200);
+    }
+
+    function countdownStart(callback) {
+      let c = 3;
+      const interval = setInterval(() => {
+        countdownEl.textContent = c;
+        if (--c < 0) {
+          clearInterval(interval);
+          document.getElementById("countdown").style.display = "none";
+          callback();
+        }
+      }, 1000);
+    }
+
+    function nextTrial() {
+      if (paused || trialCount >= trials) return;
+      trialCount++;
+      updateMetrics();
+      listening = false;
+
+      isGo = Math.random() > 0.4;
+      if (isGo) data.totalGo++; else data.totalNoGo++;
+
+      testBox.textContent = "WAIT";
+      testBox.style.backgroundColor = "gray";
+
+      setTimeout(() => {
+        if (paused) return;
+        testBox.style.backgroundColor = isGo ? goColor : noGoColor;
+        testBox.textContent = isGo ? "GO" : "NO";
+        startTime = new Date().getTime();
+        listening = true;
+
+        setTimeout(() => {
+          if (listening) {
+            if (isGo) data.misses++;
+            listening = false;
+            updateMetrics();
+          }
+          nextTrial();
+        }, 1500);
+      }, 800 + Math.random() * 1200);
+    }
+
+    function registerResponse() {
+      if (!listening) return;
+      flashBox();
+      let rt = new Date().getTime() - startTime;
+      let color = testBox.style.backgroundColor;
+
+      if (color === goColor) {
+        data.reactionTimes.push(rt);
+        data.correctHits++;
+      } else {
+        data.falseAlarms++;
+      }
+      listening = false;
+      updateMetrics();
+    }
+
+    function finishTest() {
+      testBox.textContent = "DONE";
+      testBox.style.backgroundColor = "#4b5563";
+      const avg = Math.round(data.reactionTimes.reduce((a, b) => a + b, 0) / (data.reactionTimes.length || 1));
+      results.innerHTML = `<h3>Final Results</h3>
+        <p>Avg Reaction Time: ${avg} ms</p>
+        <p>Correct Hits: ${data.correctHits} / ${data.totalGo}</p>
+        <p>False Alarms: ${data.falseAlarms} / ${data.totalNoGo}</p>
+        <p>Misses: ${data.misses}</p>`;
       window.parent.postMessage({ type: "gonogo_results", data }, "*");
     }
 
-    nextTrial();
+    // Input handling
+    document.body.onkeyup = (e) => { if (e.code === "Space") registerResponse(); };
+    testBox.addEventListener("click", registerResponse);
+    testBox.addEventListener("touchstart", (e) => { e.preventDefault(); registerResponse(); });
+
+    pauseBtn.onclick = () => {
+      paused = true;
+      pauseBtn.disabled = true;
+      resumeBtn.disabled = false;
+      testBox.textContent = "PAUSED";
+      testBox.style.backgroundColor = "#9ca3af";
+    };
+
+    resumeBtn.onclick = () => {
+      paused = false;
+      pauseBtn.disabled = false;
+      resumeBtn.disabled = true;
+      testBox.textContent = "READY";
+      nextTrial();
+    };
+
+    countdownStart(nextTrial);
   </script>
 </body>
 </html>
