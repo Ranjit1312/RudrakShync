@@ -1,0 +1,37 @@
+[theme]
+base="light"
+primaryColor="#3E7C7C"          # Trust + intuition tone (teal)
+backgroundColor="#F8F9FA"        # Clean white-gray (subtle)
+secondaryBackgroundColor="#E6F0EF" # Calm greenish-white
+textColor="#2E2E2E"              # Dark gray for contrast
+font="sans serif"                # Clean and professional
+
+[server]
+headless=false
+runOnSave=true
+enableCORS=false
+port=8501
+
+[client]
+toolbarMode="minimal"
+showSidebarNavigation=true
+
+[general]
+email="support@yourappdomain.com"
+title="Cognitive Profile: 7-Factor Mind Map"
+description="A personalized cognitive rebalancing toolkit powered by neuroscience and meditation."
+
+[branding]
+appName="RedrakShync"
+tagline="Decode your mind. Rewire your life."
+icon="🧠"  # Optional if hosting favicon externally
+faviconPath = "assets/favicon.png"
+
+[deployment]
+publicSharingEnabled=true
+multiPage=true
+maxUploadSize=20
+
+[meta]
+keywords = "cognitive restructuring, neuroscience, meditation, mental health, personalization, Streamlit app"
+author = "YourName"
