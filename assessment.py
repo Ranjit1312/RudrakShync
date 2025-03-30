@@ -74,7 +74,7 @@ class NeuroAssessment:
         st.write("Complete the task below. Press SPACE on green, ignore red.")
 
         # Read HTML content
-        with open("microtask_go_nogo.html") as f:
+        with open("script/microtask_go_nogo.html") as f:
             html_code = f.read()
 
         # Embed HTML and JS listener
@@ -351,7 +351,7 @@ class NeuroAssessment:
             st.subheader("Micro-Task B: 2-Back Memory Test")
             st.write("Press SPACE when a letter matches the one from 2 steps ago. Complete the task below:")
 
-            with open("microtask_2back.html") as f:
+            with open("script/microtask_2back.html") as f:
                 html_code = f.read()
 
             components.html(f"""
