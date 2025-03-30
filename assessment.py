@@ -6,7 +6,7 @@ import streamlit.components.v1 as components
 import json
 from typing import Dict, Any
 from datetime import datetime  # <-- Added if you need datetime.utcnow() for saving
-from supabase_client import supabase_client
+from supabase_client import supabase
 # If you're using supabase, ensure you have something like:
 # from supabase import create_client, Client
 # SUPABASE_URL = "..."
