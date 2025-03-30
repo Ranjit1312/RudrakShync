@@ -1,3 +1,5 @@
-streamlit==1.22.0
-supabase==1.0.4
+supabase
 matplotlib==3.7.1
+streamlit
+pandas
+numpy
