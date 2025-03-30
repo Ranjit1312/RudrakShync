@@ -443,13 +443,13 @@ class NeuroAssessment:
         """)
         # For demonstration, we just simulate user input of micro-task results.
         # In a real deployment, embed the HTML/JS and capture data.
-        results = run_microtask_and_get_results()
+        results = self.run_microtask_and_get_results()
         if results:
             avg_rt = sum(results["reactionTimes"]) / max(1, len(results["reactionTimes"]))
             hits = results["correctHits"]
             misses = results["misses"]
             false_alarms = results["falseAlarms"]
-            assessment.record_microtask_a_results(avg_rt, hits, misses, false_alarms)
+            self.record_microtask_a_results(avg_rt, hits, misses, false_alarms)
 
         st.markdown("---")
 
