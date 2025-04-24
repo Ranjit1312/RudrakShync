@@ -125,7 +125,7 @@ def page_gonogo():
               window.parent.postMessage({{type:"streamlit:setComponentValue",value:p}},"*");
             }}
         }});
-        </script>{html_code}""", height=600)
+        </script>{html_code}""", height=600, scrolling=True)
 
     data = st.experimental_get_query_params().get("gonogo_results", [None])[0]
     if data:
