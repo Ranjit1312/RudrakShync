@@ -142,29 +142,22 @@ def page_gonogo():
     result_json = components.html(
         html_with_bridge,
         height=600,
-        scrolling=True,
-        key="gonogo_task"           # keeps the same instance across reruns
+        scrolling=True         # keeps the same instance across reruns
     )
 
     # Only runs after the user clicks "Submit" inside the task
     if result_json:
         try:
-            # result_json is guaranteed to be a str (we JSON.stringify-ed)
             results = json.loads(result_json)
+            score_gonogo(results)
+            st.success("Go/No-Go task recorded!")
+            if st.button("Continue »"):
+                st.session_state.step += 1
+                _safe_rerun()
         except Exception as err:
             st.error(f"Could not decode Go/No-Go results: {err}")
-            return
-
-        # update scores
-        score_gonogo(results)
-        st.success("Go/No-Go task recorded!")
-
-        if st.button("Continue »", key="gonogo_continue"):
-            st.session_state.step += 1
-            _safe_rerun()
     else:
         st.info("Complete the task below, then press **Submit**.")
-
 
 def score_gonogo(r: dict):
     hits, miss, fa = r.get("correctHits",0), r.get("misses",0), r.get("falseAlarms",0)
