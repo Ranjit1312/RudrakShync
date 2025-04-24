@@ -1,493 +1,411 @@
 ##########################
-# assessment.py
+# assessment.py  •  24-Apr-2025
 ##########################
+import json, time, statistics
+from datetime import datetime
+from typing import Dict, Any
+
 import streamlit as st
 import streamlit.components.v1 as components
-import json
-from typing import Dict, Any
-from datetime import datetime  # <-- Added if you need datetime.utcnow() for saving
-from supabase_client import supabase
-# If you're using supabase, ensure you have something like:
-# from supabase import create_client, Client
-# SUPABASE_URL = "..."
-# SUPABASE_ANON_KEY = "..."
-# supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-class NeuroAssessment:
+from supabase_client import supabase      # ← make sure this helper exists
+
+# ------------------------------------------------------------------ #
+#                       ──   CONST ANCHOR   ──                       #
+# ------------------------------------------------------------------ #
+
+DOMAINS = [
+    "Stress", "Mood", "Focus", "Social", "GABA", "Anxiety", "Motivation",
+]
+
+# ── 1. Baseline & core question weights ──────────────────────────── #
+BASE_WEIGHTS = {
+    "Q2": {                       # “Right now, which word best describes…”
+        "Calm":   {"Stress": -0.10, "GABA":  0.10},
+        "Alert":  {},
+        "Tense":  {"Stress":  0.10, "Anxiety": 0.10},
+        "Tired":  {"Focus":  -0.10, "Motivation": -0.10},
+    },
+
+    "Mood":        {"Q3": 0.70, "Q4": 0.30},
+    "Social":      {"Q5": 0.70, "Q6": 0.30},
+    "Motivation":  {"Q7": 0.60, "Q8": 0.40},
+    "Anxiety":     {"Q9": 0.70, "Q10": 0.30},
+}
+
+# ── 2. Go/No-Go weights (commission 70 %, omission 20 %, RT var 30 %) ─ #
+GONOGO_WEIGHTS = {
+    "commission": {"GABA":   -0.70},
+    "omission":   {"Focus":  -0.20},
+    "rt_var":     {"Stress":  0.30, "Anxiety": 0.30},
+}
+
+# ── 3. 2-Back weights (accuracy 60 %, RT var −20 % Stress / Anxiety) ── #
+TWOBACK_WEIGHTS = {
+    "accuracy": {"Focus":  0.60},
+    "rt_var":   {"Stress": -0.20, "Anxiety": -0.20},
+}
+
+SUPABASE_TABLE = "assessments"
+
+# ------------------------------------------------------------------ #
+#                          ──   HELPERS   ──                         #
+# ------------------------------------------------------------------ #
+def init_session():
+    """One-time Streamlit session initialisation."""
+    if "scores" not in st.session_state:
+        st.session_state.scores = {d: 5.0 for d in DOMAINS}
+        st.session_state.conf   = {d: 0.0 for d in DOMAINS}
+        st.session_state.started = False
+        st.session_state.baseline_mod = 1.0
+        st.session_state.user_data = {}
+
+def update_scores(weight_map: Dict[str, float], multiplier: float = 1.0):
     """
-    Manages domain scoring for 7 neurobiological factors:
-    - Stress
-    - Mood
-    - Focus
-    - Social
-    - GABA
-    - Anxiety
-    - Motivation
-
-    Scores are kept in self.domain_scores (0-10).
-    Confidence stored in self.domain_conf (0.0 to 1.0).
+    Apply deltas to the global score dict.
+    `weight_map` already encodes direction (±) and proportion of influence.
+    `multiplier` is a 0-1 normalised task metric (e.g. error-rate or accuracy).
     """
+    for domain, weight in weight_map.items():
+        delta = 10 * weight * multiplier   # 10-point scale
+        st.session_state.scores[domain] += delta
 
-    def __init__(self):
-        # Initialize domain scores at a 'neutral' 5, domain confidence at 0.
-        self.domains = ["Stress", "Mood", "Focus", "Social", "GABA", "Anxiety", "Motivation"]
-        self.domain_scores: Dict[str, float] = {d: 5.0 for d in self.domains}
-        self.domain_conf: Dict[str, float] = {d: 0.0 for d in self.domains}
+def bump_conf(domain: str, delta: float = 0.1):
+    st.session_state.conf[domain] = min(1.0, st.session_state.conf[domain] + delta)
 
-        # Store relevant user inputs / micro-task results in a dictionary
-        self.user_data: Dict[str, Any] = {}
+# ------------------------------------------------------------------ #
+#                    ──   QUESTION COMPONENTS   ──                   #
+# ------------------------------------------------------------------ #
+def q_baseline():
+    """Q1  – baseline comparison  (± 5 % global modifier)"""
+    opts = ["Better than usual", "Same as usual", "Worse than usual"]
+    choice = st.radio("How does your current state compare to your usual baseline?", opts)
+    if choice == opts[0]:
+        st.session_state.baseline_mod = 1.05
+    elif choice == opts[2]:
+        st.session_state.baseline_mod = 0.95
+    st.session_state.user_data["Q1"] = choice
 
-    def _update_domain(
-        self,
-        domain: str,
-        delta_score: float,
-        delta_conf: float = 0.1,
-        confidence_slider: float = 1.0
-    ):
-        """
-        Update the domain score and confidence.
+def q_state_word():
+    """Q2  – single-word state  (10 % weights)"""
+    opts = ["Calm", "Alert", "Tense", "Tired"]
+    choice = st.radio("Right now, which word best describes your state?", opts, horizontal=True)
+    st.session_state.user_data["Q2"] = choice
+    update_scores(BASE_WEIGHTS["Q2"][choice], 1.0)
 
-        :param domain: Domain name, e.g. "Stress"
-        :param delta_score: How much to increment/decrement (can be negative).
-        :param delta_conf: How much to increment the domain confidence from this item.
-        :param confidence_slider: The user’s own self-rated confidence (0 to 1).
-        """
-        if domain not in self.domain_scores:
-            return
+# ---- Core self-report questions ----------------------------------- #
+def q_mood_block():
+    moods = ["Very Positive (+1)", "Neutral (0)", "Mild Negative (-0.5)", "Very Negative (-1)"]
+    mood = st.radio("Q3  •  Rate your overall emotional tone **today**", moods)
+    st.session_state.user_data["Q3"] = mood
+    if "Positive" in mood:
+        update_scores({"Mood": +10 * BASE_WEIGHTS["Mood"]["Q3"] / 10})
+    elif "Mild Negative" in mood:
+        update_scores({"Mood": -5 * BASE_WEIGHTS["Mood"]["Q3"] / 10})
+    elif "Very Negative" in mood:
+        update_scores({"Mood": -10 * BASE_WEIGHTS["Mood"]["Q3"] / 10})
 
-        # Weighted by user’s confidence
-        effective_delta = delta_score * confidence_slider
-        self.domain_scores[domain] += effective_delta
+    enjoy = st.radio(
+        "Q4  •  Have you found **meaning or joy** in tasks recently?",
+        ["Very often", "Occasionally", "Rarely", "Not at all"]
+    )
+    st.session_state.user_data["Q4"] = enjoy
+    if enjoy in ("Rarely", "Not at all"):
+        update_scores({"Mood": -10 * BASE_WEIGHTS["Mood"]["Q4"] / 10})
+    elif enjoy == "Very often":
+        update_scores({"Mood": +10 * BASE_WEIGHTS["Mood"]["Q4"] / 10})
 
-        # Increase domain confidence (capped at 1.0)
-        self.domain_conf[domain] = min(
-            1.0, 
-            self.domain_conf[domain] + (delta_conf * confidence_slider)
-        )
+def q_social_block():
+    conn = st.radio("Q5  •  How **connected** do you feel to others lately?",
+                    ["Very connected", "Somewhat connected", "Disconnected", "Isolated"])
+    st.session_state.user_data["Q5"] = conn
+    if conn == "Very connected":
+        update_scores({"Social": +10 * BASE_WEIGHTS["Social"]["Q5"] / 10})
+    elif conn in ("Disconnected", "Isolated"):
+        update_scores({"Social": -10 * BASE_WEIGHTS["Social"]["Q5"] / 10})
 
-    def run_microtask_and_get_results(self):  # <-- Added 'self' here
-        """
-        Embeds Microtask A and waits for postMessage with results.
-        Returns: parsed results dict or None
-        """
-        st.subheader("Microtask A – Go/No-Go Reaction Test")
-        st.write("Complete the task below. Press SPACE on green, ignore red.")
+    interact = st.radio("Q6  •  Have you had any **emotionally meaningful interaction** in the last 48 h?",
+                        ["Yes", "No"], horizontal=True)
+    st.session_state.user_data["Q6"] = interact
+    if interact == "Yes":
+        update_scores({"Social": +10 * BASE_WEIGHTS["Social"]["Q6"] / 10})
 
-        # Read HTML content
-        with open("script/microtask_go_nogo.html") as f:
-            html_code = f.read()
+def q_motivation_block():
+    mot = st.slider("Q7  •  How **energised / driven** do you feel to take action on your goals?",
+                    -1.0, 1.0, 0.0, 0.05)
+    st.session_state.user_data["Q7"] = mot
+    update_scores({"Motivation": mot * BASE_WEIGHTS["Motivation"]["Q7"]})
 
-        # Embed HTML and JS listener
-        result = components.html(f"""
-            <script>
-            window.addEventListener("message", (event) => {{
-                if (event.data?.type === "gonogo_results") {{
-                    const payload = JSON.stringify(event.data.data);
-                    window.parent.postMessage({{ type: "streamlit:setComponentValue", value: payload }}, "*");
-                }}
-            }});
-            </script>
-            {html_code}
-        """, height=600)
+    self_start = st.radio(
+        "Q8  •  Do you often **initiate and complete tasks** without external pressure?",
+        ["Yes, consistently", "Sometimes", "Rarely", "Not at all"]
+    )
+    st.session_state.user_data["Q8"] = self_start
+    if self_start == "Yes, consistently":
+        update_scores({"Motivation": +10 * BASE_WEIGHTS["Motivation"]["Q8"] / 10})
+    elif self_start in ("Rarely", "Not at all"):
+        update_scores({"Motivation": -10 * BASE_WEIGHTS["Motivation"]["Q8"] / 10})
 
-        # Input field to capture streamlit:setComponentValue result
-        result_json = st.experimental_get_query_params().get("gonogo_results", [None])[0]
-        if result_json:
-            try:
-                return json.loads(result_json)
-            except:
-                st.error("Failed to parse microtask result.")
-        return None
+def q_anxiety_block():
+    anx = st.radio("Q9  •  How much **worry or internal restlessness** have you felt in the last 24 h?",
+                   ["None", "Mild", "Moderate", "Severe"])
+    st.session_state.user_data["Q9"] = anx
+    if anx == "None":
+        pass
+    elif anx == "Mild":
+        update_scores({"Anxiety": +3 * BASE_WEIGHTS["Anxiety"]["Q9"]})
+    elif anx == "Moderate":
+        update_scores({"Anxiety": +7 * BASE_WEIGHTS["Anxiety"]["Q9"]})
+    else:
+        update_scores({"Anxiety": +10 * BASE_WEIGHTS["Anxiety"]["Q9"]})
 
-    def record_microtask_a_results(
-        self,
-        reaction_time: float,
-        hits: int,
-        misses: int,
-        false_alarms: int
-    ):
-        """
-        Update domain scores based on Micro-Task A (Color Reaction).
-        Example logic:
-         - Good reaction time => +Focus
-         - Many misses => -Focus or +Stress
-         - Many false alarms => -GABA or +Impulsivity
-        """
-        # Placeholder thresholds: tweak or calibrate them with real data
-        if reaction_time < 300:  # e.g. "fast" reaction
-            # Slightly boost Focus
-            self._update_domain("Focus", +1.0, delta_conf=0.2)
-        else:
-            # Possibly drop Focus or raise Stress
-            self._update_domain("Focus", -0.5, delta_conf=0.1)
+    avoid = st.radio("Q10 •  Have you **avoided** anything due to fear or worry recently?",
+                     ["No", "Minor avoidance", "Moderate avoidance", "Yes, avoided important things"])
+    st.session_state.user_data["Q10"] = avoid
+    if avoid != "No":
+        level = ["Minor avoidance", "Moderate avoidance", "Yes, avoided important things"].index(avoid) + 1
+        update_scores({"Anxiety": level * 3 * BASE_WEIGHTS["Anxiety"]["Q10"]})
 
-        if misses > 3:
-            # Lower Focus or raise Stress
-            self._update_domain("Focus", -1.0, delta_conf=0.1)
-            self._update_domain("Stress", +0.5, delta_conf=0.1)
+# ------------------------------------------------------------------ #
+#                      ──   TASK A  (Go/No-Go)   ──                   #
+# ------------------------------------------------------------------ #
+def embed_gonogo():
+    """Launch the Go/No-Go HTML/JS and wait for postMessage payload."""
+    st.subheader("Micro-task A • Go / No-Go")
+    st.caption("Tap/Press **SPACE** for GREEN disks, ignore RED disks (30 s).")
 
-        if false_alarms > 2:
-            # Possibly GABA deficiency or impulsivity
-            self._update_domain("GABA", -1.0, delta_conf=0.2)
+    with open("script/microtask_go_nogo.html") as f:
+        html_code = f.read()
 
-    def record_microtask_b_results(self, results: dict):
-        """
-        Update domain scores based on actual 2-Back micro-task results.
-        Inputs: hits, falseAlarms, misses
-        Scoring logic:
-         - High misses => low focus or memory
-         - High false alarms => impulsivity or poor inhibitory control
-         - Good hits with low errors => improved Focus
-        """
-        hits = results.get("hits", 0)
-        false_alarms = results.get("falseAlarms", 0)
-        misses = results.get("misses", 0)
-        total = hits + false_alarms + misses
+    result = components.html(f"""
+        <script>
+        window.addEventListener("message", (event) => {{
+            if (event.data?.type === "gonogo_results") {{
+                const payload = JSON.stringify(event.data.data);
+                window.parent.postMessage({{ type: "streamlit:setComponentValue", value: payload }}, "*");
+            }}
+        }});
+        </script>
+        {html_code}
+    """, height=600)
 
-        # Compute accuracy
-        accuracy = hits / total if total else 0.0
+    data = st.experimental_get_query_params().get("gonogo_results", [None])[0]
+    return json.loads(data) if data else None
 
-        if accuracy >= 0.7 and false_alarms < 3:
-            self._update_domain("Focus", +1.5, delta_conf=0.3)
-        elif accuracy >= 0.5:
-            self._update_domain("Focus", +0.5, delta_conf=0.2)
-        else:
-            self._update_domain("Focus", -1.0, delta_conf=0.2)
+def score_gonogo(results: dict):
+    """
+    Score Go/No-Go using 70/20/30 % domain split.
+    results expected keys:
+       correctHits, misses, falseAlarms, reactionTimes (list)
+    """
+    hits  = results.get("correctHits", 0)
+    miss  = results.get("misses", 0)
+    fa    = results.get("falseAlarms", 0)
+    rts   = results.get("reactionTimes", [])
+    total = hits + miss + fa if (hits + miss + fa) else 1
 
-        if false_alarms > 3:
-            self._update_domain("GABA", -0.5, delta_conf=0.2)
+    commission_rate = fa   / total       # 0-1
+    omission_rate   = miss / total       # 0-1
+    rt_var          = (statistics.stdev(rts) / statistics.mean(rts)) if len(rts) > 1 else 0.0
+    rt_norm         = min(rt_var / 0.4, 1.0)   # clamp at ≈400 % CV
 
-        if misses > 4:
-            self._update_domain("Motivation", -0.5, delta_conf=0.1)
+    update_scores(GONOGO_WEIGHTS["commission"], commission_rate)
+    update_scores(GONOGO_WEIGHTS["omission"],   omission_rate)
+    update_scores(GONOGO_WEIGHTS["rt_var"],     rt_norm)
 
-    def ask_context_and_arousal(self):
-        """
-        Q1 + Q1a: "How does today compare to your usual baseline?"
-                  "What is your overall state?"
-        Returns user choices and updates domain scores.
-        """
-        st.subheader("Context & Arousal")
+    if commission_rate > 0.2: bump_conf("GABA", 0.2)
+    if omission_rate   > 0.2: bump_conf("Focus", 0.2)
+    bump_conf("Stress", 0.2); bump_conf("Anxiety", 0.2)
 
-        # Q1: "How does today compare..."
-        q1_options = [
-            "Feels pretty typical",
-            "Notably better / calmer / more positive",
-            "Notably worse / more tense / lower than usual"
-        ]
-        q1_choice = st.radio("How does today compare to your usual mood/energy baseline?", q1_options)
-        conf_q1 = st.slider("How sure are you about your self-assessment? (Q1)", 0, 100, 80) / 100.0
+# ------------------------------------------------------------------ #
+#                      ──   TASK B  (2-Back)   ──                    #
+# ------------------------------------------------------------------ #
+def embed_twoback():
+    st.subheader("Micro-task B • 2-Back Memory")
+    st.caption("Press **SPACE** whenever the letter matches the one from 2 steps earlier.")
 
-        # Basic domain logic for Q1
-        if q1_choice == q1_options[1]:
-            # "Better" => possibly better Mood, less Stress
-            self._update_domain("Mood", +1.0, confidence_slider=conf_q1)
-            self._update_domain("Stress", -0.5, confidence_slider=conf_q1)
-        elif q1_choice == q1_options[2]:
-            # "Worse" => possibly higher Stress, lower Mood
-            self._update_domain("Stress", +1.0, confidence_slider=conf_q1)
-            self._update_domain("Mood", -1.0, confidence_slider=conf_q1)
+    with open("script/microtask_2back.html") as f:
+        html_code = f.read()
 
-        # Q1a: "What’s your overall state right now?"
-        q1a_options = ["Calm/relaxed", "Alert/energized", "Tense/jittery", "Tired/fatigued"]
-        q1a_choice = st.radio("What’s your overall state right now?", q1a_options)
-        conf_q1a = st.slider("How sure are you about this self-assessment? (Q1a)", 0, 100, 80) / 100.0
+    components.html(f"""
+        <script>
+        window.addEventListener("message", (event) => {{
+            if (event.data?.type === "twoback_results") {{
+                const payload = JSON.stringify(event.data.data);
+                window.parent.postMessage({{ type: "streamlit:setComponentValue", value: payload }}, "*");
+            }}
+        }});
+        </script>
+        {html_code}
+    """, height=600)
 
-        if q1a_choice == "Tense/jittery":
-            self._update_domain("Stress", +1.0, confidence_slider=conf_q1a)
-            self._update_domain("Anxiety", +0.5, confidence_slider=conf_q1a)
-        elif q1a_choice == "Tired/fatigued":
-            self._update_domain("Motivation", -1.0, confidence_slider=conf_q1a)
-            self._update_domain("Focus", -0.5, confidence_slider=conf_q1a)
-        elif q1a_choice == "Calm/relaxed":
-            # Slightly reduce stress if user is calm
-            self._update_domain("Stress", -0.5, confidence_slider=conf_q1a)
+    data = st.experimental_get_query_params().get("twoback_results", [None])[0]
+    return json.loads(data) if data else None
 
-        # Store user input
-        self.user_data["q1_choice"] = q1_choice
-        self.user_data["q1a_choice"] = q1a_choice
+def score_twoback(results: dict):
+    hits   = results.get("hits", 0)
+    fa     = results.get("falseAlarms", 0)
+    miss   = results.get("misses", 0)
+    rts    = results.get("reactionTimes", [])
+    total  = hits + fa + miss if (hits + fa + miss) else 1
 
-    def ask_mood_check(self):
-        """
-        Q2: Mood rating
-        """
-        st.subheader("Mood Check")
+    accuracy = hits / total
+    rt_var   = (statistics.stdev(rts) / statistics.mean(rts)) if len(rts) > 1 else 0.0
+    rt_norm  = min(rt_var / 0.4, 1.0)
 
-        q2_options = [
-            "Very positive/upbeat",
-            "Neutral/okay",
-            "Mild negative/worried",
-            "Strong negative/down/anxious"
-        ]
-        mood_choice = st.radio("Rate your emotional tone today:", q2_options)
-        conf_q2 = st.slider("How certain are you about this mood rating?", 0, 100, 80) / 100.0
+    update_scores(TWOBACK_WEIGHTS["accuracy"], accuracy)
+    update_scores(TWOBACK_WEIGHTS["rt_var"],    rt_norm)
 
-        # Example scoring:
-        if mood_choice == "Very positive/upbeat":
-            self._update_domain("Mood", +1.5, confidence_slider=conf_q2)
-        elif mood_choice == "Neutral/okay":
-            pass  # no major shift
-        elif mood_choice == "Mild negative/worried":
-            self._update_domain("Mood", -1.0, confidence_slider=conf_q2)
-        elif mood_choice == "Strong negative/down/anxious":
-            self._update_domain("Mood", -2.0, confidence_slider=conf_q2)
+    bump_conf("Focus",    0.3)
+    bump_conf("Stress",   0.2)
+    bump_conf("Anxiety",  0.2)
 
-        # Optional sub-item
-        enjoyment_options = ["Yes, strongly", "A little", "Not really"]
-        enjoyment_choice = st.radio("Are you enjoying or finding meaning in daily tasks?", enjoyment_options)
-        conf_enjoy = st.slider("Confidence in that statement?", 0, 100, 80) / 100.0
+# ------------------------------------------------------------------ #
+#                     ──   CLARIFIER QUESTIONS   ──                  #
+# ------------------------------------------------------------------ #
+def clarifiers():
+    sus = [d for d in DOMAINS
+           if st.session_state.conf[d] < 0.3
+           or st.session_state.scores[d] > 7
+           or st.session_state.scores[d] < 3][:2]
 
-        if enjoyment_choice == "Not really":
-            self._update_domain("Mood", -1.0, confidence_slider=conf_enjoy)
-            # Possibly also indicate lower Motivation
-            self._update_domain("Motivation", -0.5, confidence_slider=conf_enjoy)
-        elif enjoyment_choice == "Yes, strongly":
-            self._update_domain("Mood", +1.0, confidence_slider=conf_enjoy)
-            self._update_domain("Motivation", +0.5, confidence_slider=conf_enjoy)
-
-        # Store user input
-        self.user_data["mood_choice"] = mood_choice
-        self.user_data["enjoyment_choice"] = enjoyment_choice
-
-    def ask_social_connection(self):
-        """
-        Q3: Social & Connection
-        """
-        st.subheader("Social & Connection")
-
-        social_options = [
-            "Very connected",
-            "Somewhat connected",
-            "Isolated or avoided contact"
-        ]
-        social_choice = st.radio("How connected did you feel to others recently?", social_options)
-        conf_social = st.slider("Confidence in your self-assessment (social)?", 0, 100, 80) / 100.0
-
-        if social_choice == "Very connected":
-            self._update_domain("Social", +1.0, confidence_slider=conf_social)
-        elif social_choice == "Isolated or avoided contact":
-            self._update_domain("Social", -1.0, confidence_slider=conf_social)
-            # Possibly suspect mood or anxiety
-            self._update_domain("Mood", -0.5, confidence_slider=conf_social)
-
-        # Follow-Up
-        supportive_interaction = st.radio("Any meaningful interactions or support you found helpful?", ["Yes", "No"])
-        if supportive_interaction == "Yes":
-            self._update_domain("Social", +0.5, confidence_slider=conf_social)
-
-        # Store user input
-        self.user_data["social_choice"] = social_choice
-        self.user_data["supportive_interaction"] = supportive_interaction
-
-    def maybe_ask_clarifiers(self):
-        """
-        Adaptive clarifiers for domains with high suspicion or low confidence.
-        E.g. Stress/Anxiety clarifier, Motivation clarifier, Focus clarifier, GABA clarifier.
-        We only ask the top 1-2 clarifiers that are truly needed.
-        """
-
-        suspicious_domains = []
-        for d in self.domains:
-            # If domain_conf < 0.3 or domain_scores < 3 or > 7, we might clarify.
-            if self.domain_conf[d] < 0.3:
-                suspicious_domains.append(d)
-            if self.domain_scores[d] > 7 or self.domain_scores[d] < 3:
-                suspicious_domains.append(d)
-
-        # Deduplicate and limit to 2 clarifiers
-        suspicious_domains = list(set(suspicious_domains))[:2]
-
-        for domain in suspicious_domains:
-            st.subheader(f"Clarifier for {domain}")
-            if domain in ["Stress", "Anxiety"]:
-                clarifier_q = st.radio(
-                    f"Have you had episodes of racing thoughts, panic, or physical signs (heart pounding) related to {domain}?",
-                    ["No", "Maybe", "Yes"]
-                )
-                clar_conf = st.slider(f"Confidence about {domain} clarifier?", 0, 100, 80) / 100.0
-                if clarifier_q == "Yes":
-                    self._update_domain("Anxiety", +1.0, confidence_slider=clar_conf)
-                    self._update_domain("Stress", +1.0, confidence_slider=clar_conf)
-
-            if domain == "Motivation":
-                clarifier_q = st.radio(
-                    "Do you lack the drive to start tasks, or do you do them but feel no reward?",
-                    ["No", "Yes"]
-                )
-                clar_conf = st.slider("Confidence about motivation clarifier?", 0, 100, 80) / 100.0
-                if clarifier_q == "Yes":
-                    self._update_domain("Motivation", -1.0, confidence_slider=clar_conf)
-
-            if domain == "Focus":
-                clarifier_q = st.radio(
-                    "Do you find yourself impulsively switching tasks, or are you consistent?",
-                    ["Consistent/focused", "Often switch impulsively"]
-                )
-                clar_conf = st.slider("Confidence about focus clarifier?", 0, 100, 80) / 100.0
-                if clarifier_q == "Often switch impulsively":
-                    self._update_domain("Focus", -1.0, confidence_slider=clar_conf)
-                    # Possibly GABA link
-                    self._update_domain("GABA", -0.5, confidence_slider=clar_conf)
-
-            if domain == "GABA":
-                clarifier_q = st.radio(
-                    "Do you experience muscle tightness or difficulty relaxing daily?",
-                    ["No", "Occasionally", "Yes, frequently"]
-                )
-                clar_conf = st.slider("Confidence about GABA clarifier?", 0, 100, 80) / 100.0
-                if clarifier_q == "Yes, frequently":
-                    self._update_domain("GABA", -1.0, confidence_slider=clar_conf)
-
-            st.markdown("---")
-
-    def maybe_run_microtask_b(self):
-        """
-        If Focus or Anxiety still uncertain after clarifiers, we can run Micro-Task B.
-        This is where you'd embed your 2-Back or Go/No-Go logic (task_2.html).
-        """
-        need_focus_test = (self.domain_conf["Focus"] < 0.5)
-        need_anxiety_test = (self.domain_conf["Anxiety"] < 0.5)
-
-        if need_focus_test or need_anxiety_test:
-            st.subheader("Micro-Task B: 2-Back Memory Test")
-            st.write("Press SPACE when a letter matches the one from 2 steps ago. Complete the task below:")
-
-            with open("script/microtask_2back.html") as f:
-                html_code = f.read()
-
-            components.html(f"""
-                <script>
-                window.addEventListener("message", (event) => {{
-                    if (event.data?.type === "twoback_results") {{
-                        const payload = JSON.stringify(event.data.data);
-                        window.parent.postMessage({{ type: "streamlit:setComponentValue", value: payload }}, "*");
-                    }}
-                }});
-                </script>
-                {html_code}
-            """, height=600)
-
-            result_json = st.experimental_get_query_params().get("twoback_results", [None])[0]
-            if result_json:
-                try:
-                    results = json.loads(result_json)
-                    self.record_microtask_b_results(results)
-                    st.success("Micro-task B results processed.")
-                except Exception as e:
-                    st.error(f"Error parsing results: {e}")
-
-    def final_check_and_label(self):
-        """
-        Q8: Single-word label, final normalization of domain scores, plus summary.
-        """
-        st.subheader("Final Quick Reflection")
-        single_word = st.text_input("In a single word, how do you label your overall mental state?")
-        self.user_data["final_label"] = single_word
-
-        # Normalize domain scores to 0–10
-        for d in self.domains:
-            if self.domain_scores[d] < 0:
-                self.domain_scores[d] = 0.0
-            elif self.domain_scores[d] > 10:
-                self.domain_scores[d] = 10.0
-
-        # Summarize
-        st.markdown("### Your Domain Scores")
-        for d in self.domains:
-            conf_label = (
-                "Low" if self.domain_conf[d] < 0.3 else
-                "High" if self.domain_conf[d] > 0.8 else
-                "Medium"
+    for d in sus:
+        st.subheader(f"Clarifier • {d}")
+        if d in ("Stress", "Anxiety"):
+            ans = st.radio(
+                "Do you experience **racing thoughts, panic episodes or heart-pounding** related to stress / anxiety?",
+                ["Never", "Sometimes", "Frequently"]
             )
-            st.write(f"**{d}**: {self.domain_scores[d]:.2f} (Confidence: {conf_label})")
-
-        st.success("Assessment complete! You can now move on to recommended practices or login.")
-
-    #######################
-    # Public method that runs the entire flow
-    #######################
-    def run_full_assessment(self):
-        """
-        Runs a full assessment flow in a linear sequence.
-        """
-        st.header("Neuro-Factor Assessment")
-
-        # 1. Micro-Task A
-        st.subheader("Micro-Task A: Color Reaction Test")
-        st.write("""
-        Below is a short color reaction test. 
-        Press spacebar when you see **Green**. 
-        Do **not** press when you see **Red**.
-        """)
-
-        results = self.run_microtask_and_get_results()
-        if results:
-            avg_rt = sum(results["reactionTimes"]) / max(1, len(results["reactionTimes"]))
-            hits = results["correctHits"]
-            misses = results["misses"]
-            false_alarms = results["falseAlarms"]
-            self.record_microtask_a_results(avg_rt, hits, misses, false_alarms)
-
+            if ans == "Frequently":
+                update_scores({ "Stress": 1.0, "Anxiety": 1.0 })
+        elif d == "Motivation":
+            ans = st.radio(
+                "Do you lack drive to start tasks **or** feel no reward after finishing them?",
+                ["No", "Yes"]
+            )
+            if ans == "Yes":
+                update_scores({"Motivation": -1.0})
+        elif d == "Focus":
+            ans = st.radio(
+                "Do you often switch tasks impulsively rather than staying consistent?",
+                ["Consistent / focused", "Often switch impulsively"]
+            )
+            if ans == "Often switch impulsively":
+                update_scores({"Focus": -1.0, "GABA": -0.5})
+        elif d == "GABA":
+            ans = st.radio(
+                "Do you experience **muscle tightness** or difficulty relaxing daily?",
+                ["No", "Occasionally", "Yes, frequently"]
+            )
+            if ans == "Yes, frequently":
+                update_scores({"GABA": -1.0})
         st.markdown("---")
+        bump_conf(d, 0.4)
 
-        # 2. Q1 + Q1a
-        self.ask_context_and_arousal()
-        st.markdown("---")
+# ------------------------------------------------------------------ #
+#                        ──   FINAL PAGE   ──                        #
+# ------------------------------------------------------------------ #
+def final_page():
+    st.header("All done – thank you!")
+    st.text_input("Q11  •  In a single word or phrase, how would you describe your current mental state?",
+                  key="Q11")
 
-        # 3. Mood Check
-        self.ask_mood_check()
-        st.markdown("---")
+    conf_slider = st.slider("Q12 •  How **confident** are you in your responses today?",
+                            0.0, 1.0, 0.7, 0.05, key="Q12")
+    st.session_state.user_data["Q12"] = conf_slider
 
-        # 4. Social + Connection
-        self.ask_social_connection()
-        st.markdown("---")
+    # Apply ±5 % baseline global modifier
+    for d in DOMAINS:
+        st.session_state.scores[d] *= st.session_state.baseline_mod
+        st.session_state.scores[d] = max(0.0, min(10.0, st.session_state.scores[d]))
 
-        # 5. Adaptive clarifiers
-        self.maybe_ask_clarifiers()
-        st.markdown("---")
+    st.markdown("### Your Domain Scores")
+    for d in DOMAINS:
+        conf_label = ("Low" if st.session_state.conf[d] < 0.3
+                      else "High" if st.session_state.conf[d] > 0.8 else "Medium")
+        st.write(f"**{d}**: {st.session_state.scores[d]:.2f}   (Confidence: {conf_label})")
 
-        # 6. Possibly run Micro-Task B
-        self.maybe_run_microtask_b()
-        st.markdown("---")
+    if st.button("Show my results »"):
+        persist_to_supabase()
+        time.sleep(0.3)
+        st.switch_page("practice.py")
 
-        # 7. Final Label & Summaries
-        self.final_check_and_label()
+# ------------------------------------------------------------------ #
+#                 ──   SUPABASE  PERSISTENCE   ──                    #
+# ------------------------------------------------------------------ #
+def persist_to_supabase():
+    session_id = st.session_state.get("session_id")
+    user_email = st.session_state.get("user_email")
 
+    payload = {
+        "user_email": user_email,
+        "session_id": session_id,
+        "timestamp": datetime.utcnow().isoformat(),
+        "scores": st.session_state.scores,
+        "confidence": st.session_state.conf,
+        "source": "assessment",
+        "raw": st.session_state.user_data,
+    }
+    try:
+        supabase.table(SUPABASE_TABLE).insert(payload).execute()
+        st.success("Assessment saved to Supabase.")
+    except Exception as e:
+        st.error(f"Supabase error: {e}")
 
-##########################
-# Streamlit Page or Utility Function
-##########################
+# ------------------------------------------------------------------ #
+#                  ──   MAIN  FLOW  CONTROLLER   ──                  #
+# ------------------------------------------------------------------ #
 def run_assessment_flow():
-    """
-    Demonstration function to run the entire assessment from start to finish
-    in a single Streamlit page.
-    """
-    st.title("Assessment")
-    assessment = NeuroAssessment()
-    assessment.run_full_assessment()
+    init_session()
+    st.title("Neuro-Factor Assessment")
 
-    # If you need the final results:
-    final_scores = assessment.domain_scores
-    final_conf = assessment.domain_conf
-    st.write("**Final Scores**: ", final_scores)
-    st.write("**Final Confidences**: ", final_conf)
+    if not st.session_state.started:
+        st.markdown("""
+        ##### 7 Neurobiological Factors we’ll profile
+        • Stress / Arousal  
+        • Mood  
+        • Focus / Executive Function  
+        • Social Bonding  
+        • Inhibitory Tone (GABA)  
+        • Anxiety / Fear Reactivity  
+        • Motivation / Drive  
+        """)
+        if st.button("Start Assessment", use_container_width=True):
+            st.session_state.started = True
+            st.experimental_rerun()
+        st.stop()
 
-    # Example: Saving results to Supabase (requires a supabase client)
-    if st.button("Save Assessment"):
-        # Make sure session_id, user_email, and supabase are properly defined in your app
-        session_id = st.session_state.get("session_id")
-        user_email = st.session_state.get("user_email", None)
+    # ----------------------  Flow begins  ----------------------- #
+    q_baseline(); st.markdown("---")
+    q_state_word(); st.markdown("---")
 
-        entry = {
-            "user_email": user_email,
-            "session_id": session_id,
-            "timestamp": datetime.utcnow().isoformat(),
-            "scores": final_scores,
-            "confidence": final_conf,
-            "source": "assessment"
-        }
+    # ---- Micro-task A ---- #
+    gonogo = embed_gonogo()
+    if gonogo:
+        score_gonogo(gonogo)
+        st.success("Go/No-Go processed."); st.markdown("---")
 
-        try:
-            supabase.table("assessments").insert(entry).execute()
-            st.success("Assessment saved successfully.")
-        except Exception as e:
-            st.error(f"Error saving assessment: {e}")
+    # ---- Core questions ---- #
+    q_mood_block();        st.markdown("---")
+    q_social_block();      st.markdown("---")
+    q_motivation_block();  st.markdown("---")
+    q_anxiety_block();     st.markdown("---")
+
+    # ---- Clarifiers ---- #
+    clarifiers(); st.markdown("---")
+
+    # ---- Optional 2-Back ---- #
+    if st.session_state.conf["Focus"] < 0.5 or st.session_state.conf["Anxiety"] < 0.5:
+        twoback = embed_twoback()
+        if twoback:
+            score_twoback(twoback)
+            st.success("2-Back processed."); st.markdown("---")
+
+    # ---- Final reflection / save ---- #
+    final_page()
+
+# ------------------------------------------------------------------ #
+#  If this file is run directly:  streamlit run assessment.py         #
+# ------------------------------------------------------------------ #
+if __name__ == "__main__":
+    run_assessment_flow()
