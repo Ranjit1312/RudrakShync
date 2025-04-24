@@ -1,178 +1,221 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Go/No-Go Reaction Test</title>
-<style>
-  /* … (all your existing styles unchanged) … */
-  #postControls { margin-top:20px; display:none; text-align:center; }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Go/No-Go Reaction Test</title>
+
+  <!-- ─── ORIGINAL STYLES – unchanged ─────────────────────────────── -->
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #dbeafe, #f0f9ff);
+      color: #111;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
+    }
+    h2 { margin-top: 20px; }
+    #testBox {
+      width: 250px;              /* fixed size still works on phones */
+      height: 250px;
+      background-color: gray;
+      margin-top: 30px;
+      border-radius: 20px;
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 24px;
+      font-weight: bold;
+      transition: background-color 0.3s ease;
+      user-select: none;
+    }
+    #metrics, #results, #countdown, #controls, #postControls {
+      margin-top: 20px;
+      text-align: center;
+    }
+    .button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin: 10px;
+      border: none;
+      border-radius: 8px;
+      background-color: #2563eb;
+      color: white;
+      cursor: pointer;
+    }
+    .button:disabled { background-color: #9ca3af; cursor: not-allowed; }
+    .flash { animation: flash 0.2s ease; }
+    @keyframes flash {
+      from { box-shadow: 0 0 10px 5px rgba(255, 255, 255, 0.8); }
+      to   { box-shadow: none; }
+    }
+  </style>
 </head>
+
 <body>
-<h2>Go/No-Go Reaction Test</h2>
-<p>Press <strong>SPACEBAR</strong> or <strong>Tap</strong> when the screen turns
-  <span style="color:green;">green</span>. Do <strong>NOT</strong> respond when red.</p>
+  <h2>Go/No-Go Reaction Test</h2>
+  <p>Press <strong>SPACEBAR</strong> or <strong>Tap</strong> when the screen turns
+     <span style="color:green;">green</span>. Do <strong>NOT</strong> respond when red.</p>
 
-<div id="countdown">Starting in <span id="count">3</span>…</div>
-<div id="testBox">WAIT</div>
+  <div id="countdown">Starting in <span id="count">3</span>…</div>
+  <div id="testBox">WAIT</div>
 
-<div id="controls">
-  <button id="pauseBtn"  class="button">Pause</button>
-  <button id="resumeBtn" class="button" disabled>Resume</button>
-</div>
+  <div id="controls">
+    <button id="pauseBtn"  class="button">Pause</button>
+    <button id="resumeBtn" class="button" disabled>Resume</button>
+  </div>
 
-<div id="metrics">
-  <p>Trial: <span id="trialNum">0</span> / 20</p>
-  <p>Hits: <span id="hits">0</span> | Misses: <span id="misses">0</span> |
-     False Alarms: <span id="falseAlarms">0</span></p>
-  <p>Average Reaction Time: <span id="avgRT">-</span></p>
-</div>
+  <div id="metrics">
+    <p>Trial: <span id="trialNum">0</span> / 20</p>
+    <p>Hits: <span id="hits">0</span> |
+       Misses: <span id="misses">0</span> |
+       False Alarms: <span id="falseAlarms">0</span></p>
+    <p>Average Reaction Time: <span id="avgRT">-</span></p>
+  </div>
 
-<div id="results"></div>
+  <div id="results"></div>
 
-<!-- Submit / Re-take appear only after test ends -->
-<div id="postControls">
-  <button id="submitBtn" class="button">Submit</button>
-  <button id="retakeBtn" class="button">Re-take</button>
-</div>
+  <!-- New: appears only after the task ends -->
+  <div id="postControls" style="display:none;">
+    <button id="submitBtn" class="button">Submit</button>
+    <button id="retakeBtn" class="button">Re-take</button>
+  </div>
 
-<script>
-/* ---------- element handles ---------- */
-const testBox = document.getElementById("testBox");
-const trialNum = document.getElementById("trialNum");
-const hitsEl   = document.getElementById("hits");
-const missesEl = document.getElementById("misses");
-const faEl     = document.getElementById("falseAlarms");
-const avgRT    = document.getElementById("avgRT");
-const countdownEl = document.getElementById("count");
-const pauseBtn = document.getElementById("pauseBtn");
-const resumeBtn= document.getElementById("resumeBtn");
-const results  = document.getElementById("results");
-const postCtrls= document.getElementById("postControls");
-const submitBtn= document.getElementById("submitBtn");
-const retakeBtn= document.getElementById("retakeBtn");
+  <!-- ─── SCRIPT SECTION ──────────────────────────────────────────── -->
+  <script>
+  /* ---------- element handles ---------- */
+  const box   = document.getElementById('testBox');
+  const trial = document.getElementById('trialNum');
+  const hits  = document.getElementById('hits');
+  const miss  = document.getElementById('misses');
+  const fa    = document.getElementById('falseAlarms');
+  const avgRT = document.getElementById('avgRT');
+  const cntEl = document.getElementById('count');
+  const pause = document.getElementById('pauseBtn');
+  const resume= document.getElementById('resumeBtn');
+  const resEl = document.getElementById('results');
+  const postC = document.getElementById('postControls');
+  const submit= document.getElementById('submitBtn');
+  const retake= document.getElementById('retakeBtn');
 
-/* ---------- task-wide state ---------- */
-const TRIALS           = 20;
-const goColor = 'green', noGoColor = 'red';
-let trialCount, listening, paused, startTime, isGo, data;
+  /* ---------- constants & state ---------- */
+  const TOTAL = 20, GO = 'green', NOGO = 'red';
+  let state;   // holds dynamic data & flags
 
-/* ---------- helpers ---------- */
-const initData = () => ({
-  reactionTimes: [], falseAlarms:0, misses:0, correctHits:0,
-  totalGo:0, totalNoGo:0
-});
+  function freshState() {
+    return {
+      idx:0, listening:false, paused:false,
+      startT:0, isGo:false,
+      stats:{reactionTimes:[], falseAlarms:0, misses:0, correctHits:0, totalGo:0, totalNoGo:0}
+    };
+  }
 
-const updateMetrics = () => {
-  trialNum.textContent  = trialCount;
-  hitsEl.textContent    = data.correctHits;
-  missesEl.textContent  = data.misses;
-  faEl.textContent      = data.falseAlarms;
-  avgRT.textContent     = data.reactionTimes.length
-        ? Math.round(data.reactionTimes.reduce((a,b)=>a+b,0)/data.reactionTimes.length) + " ms" : "-";
-};
+  /* ---------- UI helpers ---------- */
+  const flash = () => { box.classList.add('flash'); setTimeout(()=>box.classList.remove('flash'),200); };
+  const showMetrics = () => {
+    trial.textContent   = state.idx;
+    hits.textContent    = state.stats.correctHits;
+    miss.textContent    = state.stats.misses;
+    fa.textContent      = state.stats.falseAlarms;
+    avgRT.textContent   = state.stats.reactionTimes.length
+        ? Math.round(state.stats.reactionTimes.reduce((a,b)=>a+b,0)/state.stats.reactionTimes.length)+' ms' : '-';
+  };
 
-const flashBox = () => {
-  testBox.classList.add("flash");
-  setTimeout(()=>testBox.classList.remove("flash"),200);
-};
+  /* ---------- main flow ---------- */
+  function countdown(cb) {
+    let c=3;
+    const t=setInterval(()=>{ cntEl.textContent=c; if(--c<0){clearInterval(t); document.getElementById('countdown').style.display='none'; cb();}},1000);
+  }
 
-/* ---------- core flow ---------- */
-function countdownStart(cb){
-  let c=3;
-  const t=setInterval(()=>{
-    countdownEl.textContent=c;
-    if(--c<0){ clearInterval(t); document.getElementById("countdown").style.display="none"; cb(); }
-  },1000);
-}
+  function next() {
+    if(state.paused) return;
+    if(state.idx>=TOTAL) return finish();
 
-function nextTrial(){
-  if(paused) return;
-  if(trialCount>=TRIALS){ finishTest(); return; }
+    state.idx++; state.listening=false; showMetrics();
+    state.isGo = Math.random() > 0.4;
+    state.isGo ? state.stats.totalGo++ : state.stats.totalNoGo++;
 
-  trialCount++; listening=false; updateMetrics();
-  isGo = Math.random() > 0.4;
-  isGo ? data.totalGo++ : data.totalNoGo++;
-
-  testBox.textContent="WAIT"; testBox.style.backgroundColor="gray";
-
-  setTimeout(()=>{
-    if(paused) return;
-    testBox.style.backgroundColor = isGo ? goColor : noGoColor;
-    testBox.textContent  = isGo ? "GO" : "NO";
-    startTime = performance.now();
-    listening = true;
+    box.textContent='WAIT'; box.style.backgroundColor='gray';
 
     setTimeout(()=>{
-      if(listening){ if(isGo) data.misses++; listening=false; updateMetrics(); }
-      nextTrial();
-    },1500);
-  }, 800 + Math.random()*1200);
-}
+      if(state.paused) return;
+      box.style.backgroundColor = state.isGo ? GO : NOGO;
+      box.textContent = state.isGo ? 'GO' : 'NO';
+      state.startT = performance.now();
+      state.listening = true;
 
-function registerResponse(){
-  if(!listening) return;
-  flashBox();
-  const rt = performance.now() - startTime;
-  const color = testBox.style.backgroundColor;
-
-  if(color===goColor){
-    data.reactionTimes.push(rt);
-    data.correctHits++;
-  }else{
-    data.falseAlarms++;
+      setTimeout(()=>{
+        if(state.listening){
+          if(state.isGo) state.stats.misses++;
+          state.listening=false; showMetrics();
+        }
+        next();
+      },1500);
+    }, 800+Math.random()*1200);
   }
-  listening=false; updateMetrics();
-}
 
-/* ---------- finish & post-test controls ---------- */
-function finishTest(){
-  paused=true; pauseBtn.disabled=true; resumeBtn.disabled=true;
-  testBox.textContent="DONE"; testBox.style.backgroundColor="#4b5563";
+  function respond(){
+    if(!state.listening) return;
+    flash();
+    const rt = performance.now()-state.startT;
+    const isHit = box.style.backgroundColor===GO;
 
-  const avg = Math.round(data.reactionTimes.reduce((a,b)=>a+b,0)/(data.reactionTimes.length||1));
-  results.innerHTML = `<h3>Final Results</h3>
-    <p>Avg Reaction Time: ${avg} ms</p>
-    <p>Correct Hits: ${data.correctHits} / ${data.totalGo}</p>
-    <p>False Alarms: ${data.falseAlarms} / ${data.totalNoGo}</p>
-    <p>Misses: ${data.misses}</p>`;
+    if(isHit){
+      state.stats.reactionTimes.push(rt);
+      state.stats.correctHits++;
+    } else {
+      state.stats.falseAlarms++;
+    }
+    state.listening=false; showMetrics();
+  }
 
-  postCtrls.style.display="block";
-}
+  function finish(){
+    state.paused=true; pause.disabled=true; resume.disabled=true;
+    box.textContent='DONE'; box.style.backgroundColor='#4b5563';
 
-submitBtn.onclick = () => {
-  window.parent.postMessage({ type:"gonogo_results", data }, "*");
-  submitBtn.disabled = true;
-};
+    const avg = Math.round(state.stats.reactionTimes.reduce((a,b)=>a+b,0)/(state.stats.reactionTimes.length||1));
+    resEl.innerHTML = `<h3>Final Results</h3>
+      <p>Avg RT : ${avg} ms</p>
+      <p>Correct Hits : ${state.stats.correctHits} / ${state.stats.totalGo}</p>
+      <p>False Alarms : ${state.stats.falseAlarms} / ${state.stats.totalNoGo}</p>
+      <p>Misses : ${state.stats.misses}</p>`;
+    postC.style.display='block';
+  }
 
-retakeBtn.onclick = () => resetTask();
+  /* ---------- reset (Re-take) ---------- */
+  function resetAll(){
+    state = freshState();
+    resEl.innerHTML=''; postC.style.display='none';
+    pause.disabled=false; resume.disabled=true;
+    document.getElementById('countdown').style.display='block';
+    cntEl.textContent='3';
+    box.textContent='WAIT'; box.style.backgroundColor='gray';
+    showMetrics(); countdown(next);
+  }
 
-/* ---------- reset for Re-take ---------- */
-function resetTask(){
-  trialCount = 0; paused=false; listening=false; data = initData();
-  results.innerHTML=""; postCtrls.style.display="none";
-  pauseBtn.disabled=false; resumeBtn.disabled=true;
-  document.getElementById("countdown").style.display="block";
-  countdownEl.textContent="3";
-  testBox.textContent="WAIT"; testBox.style.backgroundColor="gray";
-  updateMetrics();
-  countdownStart(nextTrial);
-}
+  /* ---------- input hooks ---------- */
+  document.body.onkeyup = e => { if(e.code==='Space') respond(); };
+  box.addEventListener('click', respond);
+  box.addEventListener('touchstart', e=>{ e.preventDefault(); respond(); }, {passive:false});
 
-/* ---------- input handlers ---------- */
-document.body.onkeyup = e => { if(e.code==="Space") registerResponse(); };
-testBox.addEventListener("click", registerResponse);
-testBox.addEventListener("touchstart", e=>{ e.preventDefault(); registerResponse(); });
+  pause.onclick  = ()=>{ state.paused=true; pause.disabled=true; resume.disabled=false;
+                         box.textContent='PAUSED'; box.style.backgroundColor='#9ca3af'; };
+  resume.onclick = ()=>{ state.paused=false; pause.disabled=false; resume.disabled=true;
+                         box.textContent='READY'; next(); };
 
-pauseBtn.onclick  = ()=>{ paused=true; pauseBtn.disabled=true; resumeBtn.disabled=false;
-                          testBox.textContent="PAUSED"; testBox.style.backgroundColor="#9ca3af"; };
+  submit.onclick = ()=>{ window.parent.postMessage({type:'gonogo_results', data:state.stats}, '*');
+                         submit.disabled=true; };
+  retake.onclick = resetAll;
 
-resumeBtn.onclick = ()=>{ paused=false; pauseBtn.disabled=false; resumeBtn.disabled=true;
-                          testBox.textContent="READY"; nextTrial(); };
-
-/* ---------- kick-off ---------- */
-resetTask();   /* initial launch */
-</script>
+  /* ---------- kick-off ---------- */
+  resetAll();
+  </script>
 </body>
 </html>
