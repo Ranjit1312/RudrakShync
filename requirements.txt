@@ -7,3 +7,5 @@ matplotlib>=3.7,<3.9
 pandas
 numpy
 streamlit-javascript
+streamlit-autorefresh
+
