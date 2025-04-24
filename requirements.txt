@@ -6,3 +6,4 @@ streamlit>=1.30
 matplotlib>=3.7,<3.9
 pandas
 numpy
+streamlit-javascript
