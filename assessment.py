@@ -115,26 +115,31 @@ def page_state_word():
 # 2 • Go / No-Go  --------------------------------------------------- #
 def page_gonogo():
     st.subheader("Micro-task A • Go / No-Go")
-    st.caption("Press **SPACE** for GREEN discs, ignore RED discs (30 s).")
+    st.caption("Press **SPACE** on GREEN discs, ignore RED discs (≈30 s).")
 
-    # Inject HTML with polling logic
-    with open("script/microtask_go_nogo.html", "r") as f:
+    with open("script/microtask_go_nogo.html") as f:
         html_code = f.read()
-    result_json = components.html(html_code, height=650, scrolling=True)
 
-    if result_json:
+    # Give the component a stable key so its value survives reruns
+    result_json = components.html(
+        html_code, height=650, scrolling=True, key="gonogo_iframe"
+    )
+
+    # result_json will be a str AFTER the iframe posts streamlit:setComponentValue
+    if isinstance(result_json, str):
         try:
             results = json.loads(result_json)
             score_gonogo(results)
-            st.success("Go/No-Go task recorded!")
+            st.success("Go/No-Go task recorded ✔")
 
-            if st.button("Continue »"):
+            if st.button("Continue »", key="gonogo_next"):
                 st.session_state.step += 1
-                st.experimental_rerun()
-        except Exception as e:
-            st.error(f"Could not decode Go/No-Go results: {e}")
+                _safe_rerun()
+        except Exception as err:
+            st.error(f"Could not decode Go/No-Go results: {err}")
     else:
-        st.info("Waiting for task to complete…")
+        st.info("Finish the task and press **Submit** inside the game…")
+
 
 
 def score_gonogo(r: dict):
