@@ -121,43 +121,21 @@ def page_gonogo():
     with open("script/microtask_go_nogo.html", "r") as f:
         html_code = f.read()
 
-    # Inject a tiny script wrapper so the iframe can post its score
-    html_with_bridge = f"""
-    <script>
-      /* relay Go/No-Go data back to Streamlit */
-      window.addEventListener("message", (e) => {{
-        if (e.data?.type === "gonogo_results") {{
-          window.parent.postMessage({{
-            type: "streamlit:setComponentValue",
-            value: JSON.stringify(e.data.data)   /* always string */
-          }}, "*");
-        }}
-      }});
-    </script>
-    {html_code}
-    """
-
-    # NOTE: components.html *returns* the last value sent via
-    #       streamlit:setComponentValue – None on first render
-    result_json = components.html(
-        html_with_bridge,
-        height=600,
-        scrolling=True         # keeps the same instance across reruns
-    )
-
-    # Only runs after the user clicks "Submit" inside the task
-    if result_json:
-        try:
-            results = json.loads(result_json)
-            score_gonogo(results)
-            st.success("Go/No-Go task recorded!")
-            if st.button("Continue »"):
-                st.session_state.step += 1
-                _safe_rerun()
-        except Exception as err:
-            st.error(f"Could not decode Go/No-Go results: {err}")
+    components.html(html_code, height=600, scrolling=True)
+    
+    # Get the payload from the browser’s global scope
+    result_json = st_javascript("window.goNoGoPayload || null")
+    
+    if result_json and result_json != "null":
+        results = json.loads(result_json)      # <- now it's always a str
+        score_gonogo(results)
+        st.success("Go/No-Go task recorded!")
+    
+        if st.button("Continue »"):
+            st.session_state.step += 1
+            _safe_rerun()
     else:
-        st.info("Complete the task below, then press **Submit**.")
+        st.info("Complete the task, click **Submit**, then wait a second…")
 
 def score_gonogo(r: dict):
     hits, miss, fa = r.get("correctHits",0), r.get("misses",0), r.get("falseAlarms",0)
