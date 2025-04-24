@@ -124,18 +124,22 @@ def page_gonogo():
     components.html(html_code, height=600, scrolling=True)
     
     # Get the payload from the browser’s global scope
-    result_json = st_javascript("window.goNoGoPayload || null")
+    # This will safely parse and wait for JS value
+    result_json = st_javascript("window.goNoGoPayload ? JSON.stringify(window.goNoGoPayload) : null", key="gonogo_script")
     
-    if result_json and result_json != "null":
-        results = json.loads(result_json)      # <- now it's always a str
-        score_gonogo(results)
-        st.success("Go/No-Go task recorded!")
-    
-        if st.button("Continue »"):
-            st.session_state.step += 1
-            _safe_rerun()
+    # Only process if it's a string and not "null"
+    if isinstance(result_json, str) and result_json != "null":
+        try:
+            results = json.loads(result_json)
+            score_gonogo(results)
+            st.success("Go/No-Go task recorded!")
+            if st.button("Continue »"):
+                st.session_state.step += 1
+                _safe_rerun()
+        except Exception as e:
+            st.error(f"Could not decode Go/No-Go results: {e}")
     else:
-        st.info("Complete the task, click **Submit**, then wait a second…")
+        st.info("🧪 Complete the task below and click **Submit**, then wait a moment…")
 
 def score_gonogo(r: dict):
     hits, miss, fa = r.get("correctHits",0), r.get("misses",0), r.get("falseAlarms",0)
