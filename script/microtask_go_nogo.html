@@ -235,14 +235,11 @@
   resume.onclick = ()=>{ state.paused=false; pause.disabled=false; resume.disabled=true;
                          box.textContent='READY'; next(); };
   submit.onclick = () => {
-  const payload = JSON.stringify(state.stats);
-  window.parent.postMessage(
-    { type: "streamlit:setComponentValue", value: payload },
-    "*"
-  );
-  console.log("✅ Submitted:", payload);
-  submit.disabled = true;
-};
+    const payload = JSON.stringify(state.stats);
+    window.goNoGoPayload = JSON.stringify(state.stats);        // <— write it
+    console.log("✅ Submitted:", payload);
+    submit.disabled = true;
+  };
 
 /* ---- optional: allow retake ------------------------------------ */
 retake.onclick = () => {
