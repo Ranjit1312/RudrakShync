@@ -4,7 +4,9 @@
 import json, time, statistics
 from datetime import datetime
 from typing import Dict, Any, List
-
+import json, streamlit as st, streamlit.components.v1 as components
+from streamlit_javascript import st_javascript
+from streamlit_autorefresh import st_autorefresh  
 import streamlit as st
 import streamlit.components.v1 as components
 from streamlit_javascript import st_javascript
@@ -115,27 +117,37 @@ def page_state_word():
 # 2 • Go / No-Go  --------------------------------------------------- #
 def page_gonogo():
     st.subheader("Micro-task A • Go/No-Go")
+    st.caption("Press **SPACE** for GREEN, ignore RED (≈30 s).")
 
-    with open("script/microtask_go_nogo.html") as f:
-        html_code = f.read()
+    # Render the iframe only **once** so it is not re-initialised on each refresh
+    if "gonogo_iframe_shown" not in st.session_state:
+        with open("script/microtask_go_nogo.html") as f:
+            html_code = f.read()
+        components.html(html_code, height=650, scrolling=True)
+        st.session_state.gonogo_iframe_shown = True
 
-    result_json = components.html(html_code, height=650, scrolling=True)
+    # Auto-rerun this script every 3 s **until** we have the payload
+    if "gonogo_done" not in st.session_state:
+        st_autorefresh(interval=3000, key="gonogo_autorefresh")
 
-    if isinstance(result_json, str) and not st.session_state.get("gonogo_done"):
+    # Poll the JS variable from the iframe
+    result_json = st_javascript("window.goNoGoPayload || null")
+
+    if result_json and result_json != "null" and "gonogo_done" not in st.session_state:
         try:
             results = json.loads(result_json)
             score_gonogo(results)
             st.session_state.gonogo_done = True
             st.success("Go/No-Go task recorded ✔")
         except Exception as e:
-            st.error(f"Could not decode results: {e}")
+            st.error(f"Parsing error: {e}")
 
     if st.session_state.get("gonogo_done"):
         if st.button("Continue »"):
             st.session_state.step += 1
             _safe_rerun()
     else:
-        st.info("Finish the task and press **Submit** inside the game…")
+        st.info("Finish the task, click **Submit** inside the game …")
 
 
 
