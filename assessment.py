@@ -122,11 +122,11 @@ def page_gonogo():
         html_code = f.read()
     result_json = components.html(html_code, height=650, scrolling=True)
     
-    if result_json and result_json != "null":
+    if isinstance(result_json, str):
         try:
             results = json.loads(result_json)
             score_gonogo(results)
-            st.success("Go/No-Go task recorded!")
+            st.success("Task recorded!")
     
             if st.button("Continue »"):
                 st.session_state.step += 1
@@ -134,7 +134,7 @@ def page_gonogo():
         except Exception as e:
             st.error(f"Could not decode Go/No-Go results: {e}")
     else:
-        st.info("Complete the task and click **Submit** to continue…")
+        st.info("Submit the task below to continue...")
 
 
 def score_gonogo(r: dict):
