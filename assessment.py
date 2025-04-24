@@ -114,7 +114,7 @@ def page_gonogo():
     st.subheader("Micro-task A • Go / No-Go")
     st.caption("Press **SPACE** for GREEN discs, ignore RED discs (30 s).")
 
-    with open("script/microtask_go_nogo.html") as f:
+     with open("script/microtask_go_nogo.html") as f:
         html_code = f.read()
 
     result_json = components.html(html_code, height=600, scrolling=True, key="gonogo_task")
