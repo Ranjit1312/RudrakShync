@@ -235,12 +235,11 @@
                          box.textContent='READY'; next(); };
 
   submit.onclick = () => {
-    window.parent.postMessage(
-    { type: 'gonogo_results', data: state.stats },
-    '*'
-  );
-    submit.disabled = true;
-  };
+        window.parent.goNoGoPayload = JSON.stringify(state.stats);
+        submit.disabled = true;
+      };
+      submit.disabled = true;
+    };
   retake.onclick = resetAll;
 
   /* ---------- kick-off ---------- */
