@@ -123,24 +123,24 @@ def page_gonogo():
     components.html(html_code, height=600, scrolling=True)
 
     # Grab result from localStorage (after user submits)
-    js_result = st_javascript("""
-        JSON.stringify(localStorage.getItem("gonogoPayload"))
-    """, key="gonogo_reader")
+    # js_result = st_javascript("""
+    #     JSON.stringify(localStorage.getItem("gonogoPayload"))
+    # """, key="gonogo_reader")
 
-    if js_result and isinstance(js_result, str) and js_result != '"null"':
-        try:
-            # Since it's wrapped in quotes, do a double parse
-            parsed = json.loads(json.loads(js_result))
-            score_gonogo(parsed)
-            st.success("✅ Go/No-Go task recorded.")
+    # if js_result and isinstance(js_result, str) and js_result != '"null"':
+    #     try:
+    #         # Since it's wrapped in quotes, do a double parse
+    #         parsed = json.loads(json.loads(js_result))
+    #         score_gonogo(parsed)
+    #         st.success("✅ Go/No-Go task recorded.")
 
-            if st.button("Continue »"):
-                st.session_state.step += 1
-                _safe_rerun()
-        except Exception as e:
-            st.error(f"⚠️ Could not decode Go/No-Go results: {e}")
-    else:
-        st.info("🧪 After completing the task, click **Submit**, then wait 2 seconds…")
+    #         if st.button("Continue »"):
+    #             st.session_state.step += 1
+    #             _safe_rerun()
+    #     except Exception as e:
+    #         st.error(f"⚠️ Could not decode Go/No-Go results: {e}")
+    # else:
+    #     st.info("🧪 After completing the task, click **Submit**, then wait 2 seconds…")
 
 def score_gonogo(r: dict):
     hits, miss, fa = r.get("correctHits",0), r.get("misses",0), r.get("falseAlarms",0)
