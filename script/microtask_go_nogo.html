@@ -235,7 +235,8 @@
                          box.textContent='READY'; next(); };
 
   submit.onclick = () => {
-    window.parent.goNoGoPayload = JSON.stringify(state.stats);  // ✅ streamlit sees this
+    window.goNoGoPayload = JSON.stringify(state.stats);  // ✅ streamlit sees this
+    console.log("✅ Submitted:", window.goNoGoPayload);
     submit.disabled = true;
   };
     
@@ -243,6 +244,7 @@
     localStorage.removeItem("gonogoPayload");
     resetAll();
   };
+  resetAll();
 
   </script>
 </body>
