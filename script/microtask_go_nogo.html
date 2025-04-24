@@ -234,8 +234,13 @@
   resume.onclick = ()=>{ state.paused=false; pause.disabled=false; resume.disabled=true;
                          box.textContent='READY'; next(); };
 
-  submit.onclick = ()=>{ window.parent.postMessage({type:'gonogo_results', data:state.stats}, '*');
-                         submit.disabled=true; };
+  submit.onclick = () => {
+    window.parent.postMessage({
+      type: 'streamlit:setComponentValue',
+      value: JSON.stringify(state.stats)
+    }, '*');
+    submit.disabled = true;
+  };
   retake.onclick = resetAll;
 
   /* ---------- kick-off ---------- */
