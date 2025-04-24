@@ -198,7 +198,7 @@ def embed_gonogo():
         {html_code}
     """, height=600)
 
-    data = st.experimental_get_query_params().get("gonogo_results", [None])[0]
+    data = st.query_params().get("gonogo_results", [None])[0]
     return json.loads(data) if data else None
 
 def score_gonogo(results: dict):
@@ -248,7 +248,7 @@ def embed_twoback():
         {html_code}
     """, height=600)
 
-    data = st.experimental_get_query_params().get("twoback_results", [None])[0]
+    data = st.query_params().get("twoback_results", [None])[0]
     return json.loads(data) if data else None
 
 def score_twoback(results: dict):
