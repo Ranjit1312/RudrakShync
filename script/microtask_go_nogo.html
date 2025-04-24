@@ -20,6 +20,7 @@
       min-height: 150vh; 
       overflow: auto;
       -webkit-overflow-scrolling: touch;
+      height: auto; 
     }
     h2 { margin-top: 20px; }
     #testBox {
@@ -207,6 +208,9 @@
       <p>False Alarms : ${state.stats.falseAlarms} / ${state.stats.totalNoGo}</p>
       <p>Misses : ${state.stats.misses}</p>`;
     postC.style.display='block';
+    setTimeout(() => {
+      postC.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
   }
 
   /* ---------- reset (Re-take) ---------- */
