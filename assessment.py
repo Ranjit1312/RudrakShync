@@ -117,23 +117,24 @@ def page_gonogo():
     st.subheader("Micro-task A • Go / No-Go")
     st.caption("Press **SPACE** for GREEN discs, ignore RED discs (30 s).")
 
-    # load and display HTML game
+    # Inject HTML with polling logic
     with open("script/microtask_go_nogo.html", "r") as f:
         html_code = f.read()
-    components.html(html_code, height=650, scrolling=True)
-    # Poll the global variable that the task sets on Submit
-    result_json = st_javascript("window.goNoGoPayload || null")
+    result_json = components.html(html_code, height=650, scrolling=True)
 
-    if result_json and result_json != "null":
-        results = json.loads(result_json)       # always a JSON string
-        score_gonogo(results)
-        st.success("Go/No-Go task recorded!")
+    if result_json:
+        try:
+            results = json.loads(result_json)
+            score_gonogo(results)
+            st.success("Go/No-Go task recorded!")
 
-        if st.button("Continue »"):
-            st.session_state.step += 1
-            _safe_rerun()
+            if st.button("Continue »"):
+                st.session_state.step += 1
+                st.experimental_rerun()
+        except Exception as e:
+            st.error(f"Could not decode Go/No-Go results: {e}")
     else:
-        st.info("Finish the task, hit **Submit**, then wait a second…")
+        st.info("Waiting for task to complete…")
 
 
 def score_gonogo(r: dict):
