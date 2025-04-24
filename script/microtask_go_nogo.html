@@ -224,15 +224,6 @@
     showMetrics(); countdown(next);
   }
 
-   setInterval(() => {
-    if (window.goNoGoPayload && !window.__gonogo_sent__) {
-      window.parent.postMessage({
-        type: "streamlit:setComponentValue",
-        value: window.goNoGoPayload
-      }, "*");
-      window.__gonogo_sent__ = true; // Prevent multiple sends
-    }
-  }, 5000);
 
   /* ---------- input hooks ---------- */
   document.body.onkeyup = e => { if(e.code==='Space') respond(); };
@@ -243,19 +234,25 @@
                          box.textContent='PAUSED'; box.style.backgroundColor='#9ca3af'; };
   resume.onclick = ()=>{ state.paused=false; pause.disabled=false; resume.disabled=true;
                          box.textContent='READY'; next(); };
-
   submit.onclick = () => {
-    window.goNoGoPayload = JSON.stringify(state.stats);  // ✅ streamlit sees this
-    console.log("✅ Submitted:", window.goNoGoPayload);
-    submit.disabled = true;
-  };
+  const payload = JSON.stringify(state.stats);
+  window.parent.postMessage(
+    { type: "streamlit:setComponentValue", value: payload },
+    "*"
+  );
+  console.log("✅ Submitted:", payload);
+  submit.disabled = true;
+};
 
-  retake.onclick = () => {
-    localStorage.removeItem("gonogoPayload");
-    resetAll();
-  };
+/* ---- optional: allow retake ------------------------------------ */
+retake.onclick = () => {
+  window.__gonogo_sent__ = false;          // so we can send again
   resetAll();
+};
 
-  </script>
+/* ---- kick-off first run ---------------------------------------- */
+resetAll();
+</script>
+
 </body>
 </html>
