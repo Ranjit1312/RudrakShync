@@ -224,6 +224,16 @@
     showMetrics(); countdown(next);
   }
 
+   setInterval(() => {
+    if (window.goNoGoPayload && !window.__gonogo_sent__) {
+      window.parent.postMessage({
+        type: "streamlit:setComponentValue",
+        value: window.goNoGoPayload
+      }, "*");
+      window.__gonogo_sent__ = true; // Prevent multiple sends
+    }
+  }, 5000);
+
   /* ---------- input hooks ---------- */
   document.body.onkeyup = e => { if(e.code==='Space') respond(); };
   box.addEventListener('click', respond);
@@ -239,7 +249,7 @@
     console.log("✅ Submitted:", window.goNoGoPayload);
     submit.disabled = true;
   };
-    
+
   retake.onclick = () => {
     localStorage.removeItem("gonogoPayload");
     resetAll();
