@@ -235,13 +235,16 @@
                          box.textContent='READY'; next(); };
 
   submit.onclick = () => {
-    window.localStorage.setItem("gonogoPayload", JSON.stringify(state.stats));
-    console.log("✅ Payload saved to localStorage:", state.stats);
+    const payload = JSON.stringify(state.stats);
+    window.parent.postMessage({
+      type: "streamlit:setComponentValue",
+      value: payload
+    }, "*");
     submit.disabled = true;
   };
-
+    
   retake.onclick = {
-  localStorage.removeItem("gonogoPayload");
+  // localStorage.removeItem("gonogoPayload");
   resetAll();
 };
 
