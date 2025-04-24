@@ -235,12 +235,15 @@
                          box.textContent='READY'; next(); };
 
   submit.onclick = () => {
-        window.parent.goNoGoPayload = JSON.stringify(state.stats);
-        submit.disabled = true;
-      };
-      submit.disabled = true;
-    };
-  retake.onclick = resetAll;
+    window.localStorage.setItem("gonogoPayload", JSON.stringify(state.stats));
+    console.log("✅ Payload saved to localStorage:", state.stats);
+    submit.disabled = true;
+  };
+
+  retake.onclick = {
+  localStorage.removeItem("gonogoPayload");
+  resetAll();
+};
 
   /* ---------- kick-off ---------- */
   resetAll();
