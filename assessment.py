@@ -117,18 +117,23 @@ def page_gonogo():
     with open("script/microtask_go_nogo.html") as f:
         html_code = f.read()
 
-    result_json = components.html(html_code, height=600, scrolling=True, key="gonogo_task")
+    components.html(f"""
+        <script>
+        window.addEventListener("message",(e)=>{{
+            if(e.data?.type==="gonogo_results"){{
+              const p=JSON.stringify(e.data.data);
+              window.parent.postMessage({{type:"streamlit:setComponentValue",value:p}},"*");
+            }}
+        }});
+        </script>{html_code}""", height=600)
 
-    if result_json:
-        try:
-            results = json.loads(result_json)
-            score_gonogo(results)
-            st.success("Task recorded!")
-            if st.button("Continue »"):
-                st.session_state.step += 1
-                _safe_rerun()
-        except Exception as e:
-            st.error(f"Failed to parse results: {e}")
+    data = st.experimental_get_query_params().get("gonogo_results", [None])[0]
+    if data:
+        results = json.loads(data)
+        score_gonogo(results)
+        st.success("Task recorded!")
+        if st.button("Continue »"):
+            st.session_state.step += 1; _safe_rerun()
     else:
         st.info("The task is active below …")
 
