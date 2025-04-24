@@ -9,6 +9,15 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from supabase_client import supabase      # ← make sure this helper exists
+def _safe_rerun():
+    """
+    Call st.rerun() if available, fallback to st.experimental_rerun()
+    for Streamlit < 1.10, or do nothing if neither exists.
+    """
+    if hasattr(st, "rerun"):
+        st.rerun()
+    elif hasattr(st, "experimental_rerun"):
+        st.experimental_rerun()
 
 # ------------------------------------------------------------------ #
 #                       ──   CONST ANCHOR   ──                       #
@@ -372,7 +381,7 @@ def run_assessment_flow():
         """)
         if st.button("Start Assessment", use_container_width=True):
             st.session_state.started = True
-            st.experimental_rerun()
+            _safe_rerun()
         st.stop()
 
     # ----------------------  Flow begins  ----------------------- #
