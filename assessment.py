@@ -7,6 +7,7 @@ from typing import Dict, Any, List
 
 import streamlit as st
 import streamlit.components.v1 as components
+from streamlit_javascript import st_javascript
 from supabase_client import supabase   # ← provides a ready supabase instance
 
 # ------------------------------------------------------------------ #
@@ -117,25 +118,21 @@ def page_gonogo():
     with open("script/microtask_go_nogo.html") as f:
         html_code = f.read()
 
-    components.html(f"""
-        <script>
-        window.addEventListener("message",(e)=>{{
-            if(e.data?.type==="gonogo_results"){{
-              const p=JSON.stringify(e.data.data);
-              window.parent.postMessage({{type:"streamlit:setComponentValue",value:p}},"*");
-            }}
-        }});
-        </script>{html_code}""", height=600, scrolling=True)
-
-    data = st.experimental_get_query_params().get("gonogo_results", [None])[0]
-    if data:
-        results = json.loads(data)
-        score_gonogo(results)
-        st.success("Task recorded!")
-        if st.button("Continue »"):
-            st.session_state.step += 1; _safe_rerun()
-    else:
-        st.info("The task is active below …")
+     components.html(html_code, height=600, scrolling=True)
+    
+    # Capture result after submit from JavaScript → Streamlit
+    result_json = st_javascript("window.latestGonogoResult || null")
+    
+    if result_json:
+        try:
+            results = json.loads(result_json)
+            score_gonogo(results)
+            st.success("Task recorded!")
+            if st.button("Continue »"):
+                st.session_state.step += 1
+                _safe_rerun()
+        except Exception as e:
+            st.error(f"Failed to parse Go/No-Go results: {e}")
 
 def score_gonogo(r: dict):
     hits, miss, fa = r.get("correctHits",0), r.get("misses",0), r.get("falseAlarms",0)
