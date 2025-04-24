@@ -335,7 +335,7 @@ def final_page():
 # ------------------------------------------------------------------ #
 def persist_to_supabase():
     session_id = st.session_state.get("session_id")
-    user_email = st.session_state.get("user_email")
+    user_email = st.session_state.get("user_email",None)
 
     payload = {
         "user_email": user_email,
