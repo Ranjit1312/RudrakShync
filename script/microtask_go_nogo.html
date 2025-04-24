@@ -235,7 +235,10 @@
                          box.textContent='READY'; next(); };
 
   submit.onclick = () => {
-    window.latestGonogoResult = JSON.stringify(state.stats) ;
+    window.parent.postMessage(
+    { type: 'gonogo_results', data: state.stats },
+    '*'
+  );
     submit.disabled = true;
   };
   retake.onclick = resetAll;
