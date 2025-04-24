@@ -127,7 +127,7 @@ def page_gonogo():
         }});
         </script>{html_code}""", height=600)
 
-    data = st.experimental_get_query_params().get("gonogo_results", [None])[0]
+    data = st.query_params.get("gonogo_results", [None])[0]
     if data:
         results = json.loads(data)
         score_gonogo(results)
@@ -291,7 +291,7 @@ def page_twoback():
         }});
         </script>{html_code}""", height=600)
 
-    data = st.experimental_get_query_params().get("twoback_results", [None])[0]
+    data = st.query_params.get("twoback_results", [None])[0]
     if data:
         score_twoback(json.loads(data))
         st.success("Task recorded!")
