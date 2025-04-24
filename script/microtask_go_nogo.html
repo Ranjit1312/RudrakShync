@@ -243,10 +243,8 @@
     submit.disabled = true;
   };
     
-  retake.onclick = {
-  // localStorage.removeItem("gonogoPayload");
-  resetAll();
-};
+  retake.onclick = () => { resetAll(); };
+
 
   /* ---------- kick-off ---------- */
   resetAll();
