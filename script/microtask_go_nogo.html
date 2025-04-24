@@ -18,11 +18,12 @@
       align-items: center;
       justify-content: flex-start;
       min-height: 100vh;
+      overflow: auto;
     }
     h2 { margin-top: 20px; }
     #testBox {
-      width: 80vw;              /* fixed size still works on phones */
-      height: 70vh;
+      width: 250px;              /* fixed size still works on phones */
+      height: 250px;
       background-color: gray;
       margin-top: 30px;
       border-radius: 20px;
@@ -62,6 +63,11 @@
       padding: 10px;
       border-radius: 8px;
       box-shadow: 0 0 5px rgba(0,0,0,0.1);
+    }
+   .content-wrapper {
+      min-height: 150vh; /* ✅ forces content to overflow vertically */
+      padding: 2rem;
+      background: linear-gradient(135deg, #dbeafe, #f0f9ff);
     }
   </style>
 </head>
