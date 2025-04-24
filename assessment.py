@@ -118,7 +118,7 @@ def page_gonogo():
     with open("script/microtask_go_nogo.html") as f:
         html_code = f.read()
 
-     components.html(html_code, height=600, scrolling=True)
+    components.html(html_code, height=600, scrolling=True)
     
     # Capture result after submit from JavaScript → Streamlit
     result_json = st_javascript("window.latestGonogoResult || null")
