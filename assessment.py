@@ -120,27 +120,22 @@ def page_gonogo():
     # load and display HTML game
     with open("script/microtask_go_nogo.html", "r") as f:
         html_code = f.read()
-    components.html(html_code, height=600, scrolling=True)
+    result_json = components.html(html_code, height=650, scrolling=True)
+    
+    if result_json and result_json != "null":
+        try:
+            results = json.loads(result_json)
+            score_gonogo(results)
+            st.success("Go/No-Go task recorded!")
+    
+            if st.button("Continue »"):
+                st.session_state.step += 1
+                _safe_rerun()
+        except Exception as e:
+            st.error(f"Could not decode Go/No-Go results: {e}")
+    else:
+        st.info("Complete the task and click **Submit** to continue…")
 
-    # Grab result from localStorage (after user submits)
-    # js_result = st_javascript("""
-    #     JSON.stringify(localStorage.getItem("gonogoPayload"))
-    # """, key="gonogo_reader")
-
-    # if js_result and isinstance(js_result, str) and js_result != '"null"':
-    #     try:
-    #         # Since it's wrapped in quotes, do a double parse
-    #         parsed = json.loads(json.loads(js_result))
-    #         score_gonogo(parsed)
-    #         st.success("✅ Go/No-Go task recorded.")
-
-    #         if st.button("Continue »"):
-    #             st.session_state.step += 1
-    #             _safe_rerun()
-    #     except Exception as e:
-    #         st.error(f"⚠️ Could not decode Go/No-Go results: {e}")
-    # else:
-    #     st.info("🧪 After completing the task, click **Submit**, then wait 2 seconds…")
 
 def score_gonogo(r: dict):
     hits, miss, fa = r.get("correctHits",0), r.get("misses",0), r.get("falseAlarms",0)
