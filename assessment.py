@@ -117,7 +117,7 @@ def page_gonogo():
     with open("script/microtask_go_nogo.html") as f:
         html_code = f.read()
 
-    result_json = components.html(html_code, height=600, key="gonogo_task")
+    result_json = components.html(html_code, height=600, scrolling=True, key="gonogo_task")
 
     if result_json:
         try:
